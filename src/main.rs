@@ -171,7 +171,7 @@ fn set_task(task: Json<TaskParams>) -> Json<Res>{
         return Res::error(Some("数据库连接错误".to_string()));
     }
 
-    if let Err(e) = db.conn.query_row::<i64, _, _>("select id from client where id=?1 and is_valid=1", &[task.client_id], |row| {
+    if let Err(e) = db.conn.query_row::<i64, _, _>("select id from client where id=?1 and is_valid=1 and is_online=1", &[task.client_id], |row| {
         row.get(0)
     }) {
         Res::error(Some("客户不存在".to_string()));
