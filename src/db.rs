@@ -38,13 +38,13 @@ impl Db {
     fn init_datebase(&self, database_version: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
         let mut sqls = HashMap::new();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let sql1 = format!("insert into version (version,create_at) values ({}, '{}')", Db::current_version, &now);
+        let sql1 = format!("insert into version (version,created_at) values ({}, '{}')", Db::current_version, &now);
         sqls.insert(1, vec![
             "drop table if exists version",
-            "create table version (id integer primary key autoincrement,version integer not null,create_at datetime)",
+            "create table version (id integer primary key autoincrement,version integer not null,created_at datetime)",
             &sql1,
             "drop table if exists client",
-            "create table client (id integer primary key autoincrement,client_ip integer not null unique,is_enable tiny_int not null default 1,create_at datetime)",
+            "create table client (id integer primary key autoincrement,client_ip integer not null unique,name varchar(30) default null,is_online tinyint default 0,last_online_time datetime,is_enable tiny_int not null default 1,created_at datetime)",
             "drop table if exists task",
             "create table task (id integer primary key autoincrement,client_id integer not null,
                 is_valid tiny_int not null default 1,task_type varchar varchar(25) not null,cancled_at datetime,pulled_at datetime,created_at datetime)"

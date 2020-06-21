@@ -12,8 +12,10 @@ use rocket::Outcome;
 use rocket::http::Status;
 use rocket::request::{self, Request, FromRequest};
 use rocket_contrib::json::Json;
-use chrono::{Local};
+use chrono::{Local, DateTime, NaiveDateTime};
+use chrono::prelude::*;
 use serde::Deserialize;
+use rusqlite::{NO_PARAMS};
 
 #[derive(Debug)]
 struct Client(u32);
@@ -31,6 +33,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
         let remote_addr = request.remote().unwrap().to_string();
         let remote:Vec<&str> = remote_addr.split(":").collect();
         let remote_ip = remote[0];
+        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         let db:Db;
         if let Ok(d) = Db::get_db() {
@@ -40,6 +43,8 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
             }) {
                 Ok(ret) => {
                     if (ret[1] == 1) {
+                        db.conn.execute("update client set is_online=1,last_online_time=?1 where client_ip=?2", &[&now[..], &remote_ip]);
+                        
                         return Outcome::Success(Client(ret[0]));
                     } else {
                         Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
@@ -59,6 +64,62 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
 fn index(client:Client) -> &'static str {
     "Hello, world!"
 }
+
+#[get("/check_online")]
+fn check_online() -> &'static str {
+    let now = Local::now().timestamp();
+    let offline_second = 30;
+    let db:Db;
+    if let Ok(d) = Db::get_db() {
+        db = d;
+    } else {
+        return "error";
+    }
+
+    let ret = db.conn.prepare("select * from client where is_online=1");
+    let mut ids = Vec::new();
+    if let Ok(mut smtm) = db.conn.prepare("select id,last_online_time from client where is_online=1") {
+        if let Ok(mut ret) = smtm.query(NO_PARAMS) {
+
+            while let Some(row) = ret.next().unwrap() {
+                let last_online_time:String;
+                let mut id:i32 = 0;
+                if let Ok(i) = row.get(0) {
+                    id = i;
+                } 
+                
+                if let Ok(time) = row.get(1) {
+                    last_online_time = time;
+                } else {
+                    ids.push(id);
+                    continue;
+                }
+
+                if let Ok(time) =  NaiveDateTime::parse_from_str(&last_online_time, "%Y-%m-%d %H:%M:%S") {
+                    if (now - time.timestamp() + 3600*8 > offline_second) {
+                        ids.push(id);
+                    } 
+                } else {
+                    ids.push(id);
+                    continue;                 
+                }
+            }
+        }
+    }
+
+    if (ids.len() > 0) {
+        let mut sql = "update client set is_online=0 where ".to_string();
+        for id in ids {
+            sql = format!("{} id={} or", sql, id);
+        }        
+        let len = sql.len();
+        sql = sql.chars().take(len-2).collect();
+        db.conn.execute(&sql, NO_PARAMS);
+    }
+
+    ""
+}
+
 
 #[post("/get_task")]
 fn get_task(client:Client) -> Json<Res>{
@@ -135,6 +196,6 @@ fn main() {
     }
 
     rocket::ignite()
-    .mount("/", routes![index, get_task, set_task])
+    .mount("/", routes![index, get_task, set_task, check_online])
     .launch();
 }
