@@ -2,23 +2,29 @@
 
 mod db;
 mod function;
+mod model;
+
 use db::{Db};
 use function::Res;
+use rocket_contrib::templates::Template;
+use model::{check_login, get_client_statistics, StatisticsRow, set_task as set_operation};
+use std::collections::HashMap;
 
 #[macro_use] extern crate rocket;
 
 
 use rocket::Outcome;
 use rocket::http::Status;
-use rocket::request::{self, Request, FromRequest};
+use rocket::request::{self, Request, FromRequest, Form};
+use rocket::response::Redirect;
+use rocket::http::{Cookie, Cookies};
 use rocket_contrib::json::Json;
-use chrono::{Local, DateTime, NaiveDateTime};
-use chrono::prelude::*;
+use chrono::{Local, NaiveDateTime};
 use serde::Deserialize;
 use rusqlite::{NO_PARAMS};
 
 #[derive(Debug)]
-struct Client(u32);
+struct Client(i32);
 
 #[derive(Debug)]
 enum ClientError{
@@ -38,7 +44,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
         let db:Db;
         if let Ok(d) = Db::get_db() {
             db = d;
-            match db.conn.query_row::<Vec<u32>,_,_>("select id,is_enable from client where client_ip=?1", &[&remote_ip], |row| {
+            match db.conn.query_row::<Vec<i32>,_,_>("select id,is_enable from client where client_ip=?1", &[&remote_ip], |row| {
                 Ok(vec![row.get(0)?, row.get(1)?])
             }) {
                 Ok(ret) => {
@@ -60,9 +66,28 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
     }
 }
 
-#[get("/")]
-fn index(client:Client) -> &'static str {
-    "Hello, world!"
+#[derive(Debug)]
+struct Admin(i32);
+
+#[derive(Debug)]
+enum AdminError{
+    NotPermit,
+}
+
+impl <'a, 'r> FromRequest<'a, 'r> for Admin {
+    type Error = AdminError;
+
+    fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+        if let Some(id) = request.cookies().get_private("user_id") {
+            if let Ok(d) = id.value().parse::<i32>() {
+                return Outcome::Success(Admin(d));
+            } else {
+                return Outcome::Failure((Status::Forbidden, AdminError::NotPermit));
+            }
+        } else {
+            return Outcome::Failure((Status::Forbidden, AdminError::NotPermit));
+        }
+    }
 }
 
 #[get("/check_online")]
@@ -126,6 +151,7 @@ fn get_task(client:Client) -> Json<Res>{
     let client_id = client.0;
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let db:Db;
+
     if let Ok(d) = Db::get_db() {
         db = d;
     } else {
@@ -156,32 +182,141 @@ fn get_task(client:Client) -> Json<Res>{
 }
 
 #[derive(Deserialize, Debug)]
-struct TaskParams {
-    client_id: i64,
-    task_type: String,
+struct StatusParams<'a> {
+    cpu_user: Option<f32>,
+    cpu_system: Option<f32>,
+    cpu_nice: Option<f32>,
+    cpu_idle: Option<f32>,
+    cpu_temp: Option<f32>,
+    uptime: Option<u64>,
+    boot_time: Option<&'a str>,
+    memory_free: Option<u64>,
+    memory_total: Option<u64>,
 }
 
-#[post("/set_task", data="<task>")]
-fn set_task(task: Json<TaskParams>) -> Json<Res>{
-    let db:Db;
+#[post("/set_status", data="<status>")]
+fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
+    let client_id = client.0;
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let db:Db;
     if let Ok(d) = Db::get_db() {
         db = d;
     } else {
         return Res::error(Some("数据库连接错误".to_string()));
     }
 
-    if let Err(e) = db.conn.query_row::<i64, _, _>("select id from client where id=?1 and is_valid=1 and is_online=1", &[task.client_id], |row| {
-        row.get(0)
-    }) {
-        Res::error(Some("客户不存在".to_string()));
+    if let Err(e) = db.conn.execute(&format!("insert into cpu_info (client_id,cpu_user,cpu_system,cpu_idle,cpu_nice,created_at) values ({}, {}, {}, {}, {}, '{}')", client_id,
+    status.cpu_user.unwrap_or_else(||{return 0.0}), status.cpu_system.unwrap_or_else(||{return 0.0}), status.cpu_idle.unwrap_or_else(||{return 0.0}), status.cpu_nice.unwrap_or_else(||{return 0.0}),
+    now),
+         NO_PARAMS) {
+        return Res::error(Some("插入失败".to_string()));
     }
 
-    if let Err(e) = db.conn.execute(&format!("insert into task (client_id,task_type,created_at) values ({}, ?1, ?2)", task.client_id), &[&task.task_type, &now]) {
+    let mf = status.memory_free.unwrap_or_else(||{return 0;});
+    let mt = status.memory_total.unwrap_or_else(||{return 0;});
+    if let Err(e) = db.conn.execute(&format!("insert into memory_info (client_id,memory_free,memory_total,created_at) values ({}, {}, {}, '{}')", client_id,
+    status.memory_free.unwrap_or_else(||{return 0}), status.memory_total.unwrap_or_else(||{return 0}),
+    now), 
+    NO_PARAMS) {
         println!("{:?}", e);
         return Res::error(Some("插入失败".to_string()));
     }
+
+    if let Err(e) = db.conn.execute(&format!("update client set uptime={},boot_time='{}' where id={}", status.uptime.unwrap_or_else(||{return 0}), 
+        &(status.boot_time.unwrap_or_else(||{return "";})), client_id), 
+    NO_PARAMS
+    ) {
+        println!("{:?}", e);
+        return Res::error(Some("插入失败".to_string()));
+    }
+
     Res::ok(None, None)
+}
+
+#[derive(Deserialize, Debug)]
+struct TaskParams {
+    client_id: u64,
+    task_type: String,
+}
+
+#[post("/set_task", data="<task>")]
+fn set_task(task: Json<TaskParams>) -> Json<Res>{
+    let task_type = task.task_type.clone();
+    match set_operation(task.client_id, task_type) {
+        Ok(d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+#[get("/")]
+fn index() -> Redirect{
+    Redirect::to(uri!(login))
+}
+
+#[get("/login")]
+fn login() -> Template{
+    Template::render("login", "")
+}
+
+#[derive(FromForm, Debug)]
+struct LoginParams {
+    username: String,
+    password: String,
+}
+ 
+#[post("/login", data="<params>")]
+fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Template{
+    let mut render = HashMap::new();
+    match check_login(&params.username, &params.password) {
+        Ok(id) => {
+            render.insert("url", "/statistics");
+            render.insert("message", "登陆成功");
+
+            cookies.add_private(Cookie::new("user_id", id.to_string()));
+        },
+        Err(e) => {
+            render.insert("url", "/login");
+            render.insert("message", "账号或密码错误");;
+        }
+    }
+    Template::render("do_login", &render)
+}
+
+#[get("/statistics")]
+fn statistics(admin: Admin) -> Template{
+    Template::render("statistics", "")
+}
+
+#[post("/get_statistics")]
+fn get_statistics(admin: Admin) -> Json<Vec<StatisticsRow>>{
+    if let Ok(ret) = get_client_statistics() {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+#[derive(FromForm, Debug)]
+struct OprateParams {
+    client_id: u64,
+    operation: String,
+}
+
+#[post("/operate", data="<params>")]
+fn operate(admin: Admin, params:Form<OprateParams>) -> Json<Res> {
+    let operation = params.operation.clone();
+    match set_operation(params.client_id, operation) {
+        Ok(d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
 }
 
 fn main() {
@@ -196,6 +331,7 @@ fn main() {
     }
 
     rocket::ignite()
-    .mount("/", routes![index, get_task, set_task, check_online])
+    .mount("/", routes![get_task, set_status, set_task, check_online, login, do_login, statistics, get_statistics, operate, index])
+    .attach(Template::fairing())
     .launch();
 }

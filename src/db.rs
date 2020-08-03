@@ -7,7 +7,9 @@ pub struct Db {
 }
 
 impl Db {
-    const current_version:u32 = 1;
+    const current_version:u32 = 2;
+    const default_admin_username:&'static str = "admin";
+    const default_admin_password:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
     pub fn get_db() ->  Result<Db, Box<dyn std::error::Error>> {
         Db::new("/data/monitor.db")
@@ -39,6 +41,7 @@ impl Db {
         let mut sqls = HashMap::new();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let sql1 = format!("insert into version (version,created_at) values ({}, '{}')", Db::current_version, &now);
+        let sql2 = format!("insert into admin (username,password,created_at) values ('{}', '{}', '{}')", Db::default_admin_username, Db::default_admin_password, &now);
         sqls.insert(1, vec![
             "drop table if exists version",
             "create table version (id integer primary key autoincrement,version integer not null,created_at datetime)",
@@ -50,13 +53,26 @@ impl Db {
                 is_valid tiny_int not null default 1,task_type varchar varchar(25) not null,cancled_at datetime,pulled_at datetime,created_at datetime)"
         ]);
 
+        sqls.insert(2, vec![
+            "drop table if exists cpu_info",
+            "drop table if exists memory_info",
+            "drop table if exists admin",
+            "create table cpu_info (id integer primary key autoincrement,cpu_user real,cpu_system real,cpu_nice real,cpu_idle real,client_id integer not null,created_at datetime)",
+            "create table memory_info (id integer primary key autoincrement,memory_free integer,memory_total integer,client_id integer not null,created_at datetime)",
+            "alter table client add uptime integer",
+            "alter table client add boot_time datetime",
+            "create table admin (id integer primary key autoincrement,username varchar(30) not null unique,password CHARACTER(32) not null,last_login_at datetime,created_at datetime)",
+            &sql2,
+        ]);
+
         for (key, value) in sqls {
             match database_version {
                 Some(i) => {
-                    if (Db::current_version > i) {
+                    if (key > i) {
                         for sql in value {
                             self.conn.execute(sql, NO_PARAMS)?;
                         }
+                        self.conn.execute("update version set version=?1", &[key])?;
                     }
                 },
                 None => {

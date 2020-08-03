@@ -1,0 +1,207 @@
+<html>
+
+<head>
+    <title>Statistics</title>
+    <style>
+        #customers {
+            font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        #customers td,
+        #customers th {
+            border: 1px solid rgba(68, 196, 231, 0.8);
+            padding: 8px;
+        }
+
+        #customers tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        #customers tr:hover {
+            background-color: #ddd;
+        }
+
+        #customers th {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            text-align: left;
+            background-color: rgba(68, 196, 231, 0.8);
+            color: white;
+        }
+
+        a {
+            color: rgba(68, 196, 231, 0.8);
+            text-decoration: none;
+        }
+
+        .offline{
+            color: gray;
+        }
+
+        .online{}
+    </style>
+</head>
+
+<body>
+    <table id="customers">
+    </table>
+    <script src="https://cdnjs.gtimg.com/cdnjs/libs/zepto/1.1.4/zepto.min.js"></script>
+    <script>
+        var sort = ["is_online desc", "id asc"]; 
+        function getData() {
+            $.ajax({
+                url: "/get_statistics",
+                dataType: "json",
+                type: "POST",
+                success: function (ret) {
+                    ret = ret.sort(function (item1, item2) {
+                        let v1 = "";
+                        let v2 = "";
+                        for(var i=0,len=sort.length; i<len; i++) {
+                            var s = sort[i].split(" ");
+                            if (s[1] == "asc") {
+                                v1 += item1[s[0]];
+                                v2 += item2[s[0]];
+                            } else {
+                                v1 += item2[s[0]];
+                                v2 += item1[s[0]];
+                            }
+                        }
+
+                        return v1 > v2 ? 1 : -1;
+                    });
+                    var html = "<tr><th>客户端ip</th><th>名称</th><th>开机时长</th><th>启动时间</th><th>在线</th><th>禁用</th><th>cpu</th><th>内存</th><th>上次同步时间</th><th>操作</th></tr>";
+                    for (var i = 0, len = ret.length; i < len; i++) {
+                        var is_online = ret[i]["is_online"];
+                        html += '<tr class="'+(is_online == 1 ? "online" : "offline")+'" ><td>' + ret[i]["client_ip"] + "</td><td>"
+                            + filter(ret[i]["name"]) + "</td><td>"
+                            + formatSeconds(ret[i]["uptime"]) + "</td><td>"
+                            + filter(ret[i]["boot_time"]) +
+                            "</td><td>" + (is_online == 1 ? "在线" : "离线") + "</td><td>"
+                            + (ret[i]["is_enable"] == 1 ? "启用" : "停用") + "</td><td>"
+                            + (is_online == 1 ? accMul(tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4),100) + "%" : "") + "</td><td>"
+                            + (is_online == 1 ? getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + getfilesize(ret[i]["memory_total"]) + " ( " + tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "")
+                            +  "</td><td>" + filter(ret[i]["last_online_time"])
+                            + "</td><td>" + (is_online == 1 ? '<a href="#" onclick="run(1, ' + ret[i]["id"] + ')">关机</a> <a href="#" onclick="run(2, ' + ret[i]["id"] + ')">重启</a>' : "") + "</td></tr>";
+                    }
+                    $("table").html(html);
+                },
+                error: function (xhr, status) {
+                    if (xhr.status == 403) {
+                        reLogin();
+                    }
+                }
+            })
+        }
+
+        function run(type, id) {
+            var data = {
+                client_id: id,
+                operation: type == 1 ? "shutdown" : "reboot",
+            };
+            if (confirm("确定吗?")) {
+                $.ajax({
+                    url: "/operate",
+                    dataType: "json",
+                    type: "POST",
+                    data: data,
+                    success: function (ret) {
+                        if (!ret.ok) {
+                            alert(ret.message)
+                        }
+                    },
+                    error: function (xhr, status) {
+                        if (xhr.status == 403) {
+                            reLogin();
+                        }
+                    }
+                })
+            }
+        }
+
+        function getfilesize(size) {
+            if (!size)
+                return "";
+            var num = 1024.00; //byte
+            if (size < num)
+                return size + "B";
+            if (size < Math.pow(num, 2))
+                return (size / num).toFixed(2) + "K"; //kb
+            if (size < Math.pow(num, 3))
+                return (size / Math.pow(num, 2)).toFixed(2) + "M"; //M
+            if (size < Math.pow(num, 4))
+                return (size / Math.pow(num, 3)).toFixed(2) + "G"; //G
+            return (size / Math.pow(num, 4)).toFixed(2) + "T"; //T
+        }
+
+        function filter(data) {
+            return data === null ? "" : data;
+        }
+
+        function formatSeconds(value) {
+            var theTime = parseInt(value);// 需要转换的时间秒 
+            var theTime1 = 0;// 分 
+            var theTime2 = 0;// 小时 
+            var theTime3 = 0;// 天
+            if (theTime > 60) {
+                theTime1 = parseInt(theTime / 60);
+                theTime = parseInt(theTime % 60);
+                if (theTime1 > 60) {
+                    theTime2 = parseInt(theTime1 / 60);
+                    theTime1 = parseInt(theTime1 % 60);
+                    if (theTime2 > 24) {
+                        //大于24小时
+                        theTime3 = parseInt(theTime2 / 24);
+                        theTime2 = parseInt(theTime2 % 24);
+                    }
+                }
+            }
+            var result = '';
+            if (theTime > 0) {
+                result = "" + parseInt(theTime) + "秒";
+            }
+            if (theTime1 > 0) {
+                result = "" + parseInt(theTime1) + "分" + result;
+            }
+            if (theTime2 > 0) {
+                result = "" + parseInt(theTime2) + "小时" + result;
+            }
+            if (theTime3 > 0) {
+                result = "" + parseInt(theTime3) + "天" + result;
+            }
+            return result;
+        }
+
+        function reLogin() {
+            alert("登录失效");
+            location.href = "/login";
+        }
+
+        function accMul(arg1, arg2) {
+            var m = 0, s1 = arg1.toString(), s2 = arg2.toString();
+            try { m += s1.split(".")[1].length } catch (e) { }
+            try { m += s2.split(".")[1].length } catch (e) { }
+            return Number(s1.replace(".", "")) * Number(s2.replace(".", "")) / Math.pow(10, m)
+        }
+
+        function tofixed(num, n) {
+            var symbol = 1
+            if (num < 0) {
+                // 符号为负
+                symbol = -1
+                num *= -1
+            }
+            var num2 = (Math.round(num * Math.pow(10, n))
+                / Math.pow(10, n) + Math.pow(10, -(n + 1)))
+                .toString().slice(0, -1)
+            return parseFloat(num2 * symbol).toFixed(n)
+        }
+
+        getData();
+        setInterval(getData, 5000);
+    </script>
+</body>
+
+</html>
