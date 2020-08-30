@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const current_version:u32 = 2;
+    const current_version:u32 = 3;
     const default_admin_username:&'static str = "admin";
     const default_admin_password:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -63,6 +63,11 @@ impl Db {
             "alter table client add boot_time datetime",
             "create table admin (id integer primary key autoincrement,username varchar(30) not null unique,password CHARACTER(32) not null,last_login_at datetime,created_at datetime)",
             &sql2,
+        ]);
+
+        sqls.insert(3, vec![
+            "CREATE INDEX c_cid ON cpu_info(client_id)",
+            "CREATE INDEX m_cid ON memory_info(client_id)",
         ]);
 
         for (key, value) in sqls {
