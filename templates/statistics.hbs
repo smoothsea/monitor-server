@@ -48,14 +48,26 @@
     <table id="customers">
     </table>
     <script src="https://cdnjs.gtimg.com/cdnjs/libs/zepto/1.1.4/zepto.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script>
         var sort = ["is_online desc", "id asc"]; 
+
+        axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded';
+        axios.interceptors.response.use(function (response) {
+            return response;
+        }, function (error) {
+            if (error.response.status == 403) {
+                clearUserInterval();
+                reLogin();
+            } else {
+                alert("网络错误");
+            }
+        });
+
         function getData() {
-            $.ajax({
-                url: "/get_statistics",
-                dataType: "json",
-                type: "POST",
-                success: function (ret) {
+            axios.post("/get_statistics", {}).then(function (ret) {
+                if (ret.status) {
+                  ret = ret.data;
                     ret = ret.sort(function (item1, item2) {
                         let v1 = "";
                         let v2 = "";
@@ -72,7 +84,7 @@
 
                         return v1 > v2 ? 1 : -1;
                     });
-                    var html = "<tr><th>客户端ip</th><th>名称</th><th>开机时长</th><th>启动时间</th><th>在线</th><th>禁用</th><th>cpu</th><th>内存</th><th>上次同步时间</th><th>操作</th></tr>";
+                    var html = "<tr><th>客户端ip</th><th>名称</th><th>开机时长</th><th>启动时间</th><th>在线</th><th>禁用</th><th>cpu</th><th>内存</th><th>上次同步时间</th><th>操作</th><th>管理</th></tr>";
                     for (var i = 0, len = ret.length; i < len; i++) {
                         var is_online = ret[i]["is_online"];
                         html += '<tr class="'+(is_online == 1 ? "online" : "offline")+'" ><td>' + ret[i]["client_ip"] + "</td><td>"
@@ -84,16 +96,12 @@
                             + (is_online == 1 ? accMul(tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4),100) + "%" : "") + "</td><td>"
                             + (is_online == 1 ? getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + getfilesize(ret[i]["memory_total"]) + " ( " + tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "")
                             +  "</td><td>" + filter(ret[i]["last_online_time"])
-                            + "</td><td>" + (is_online == 1 ? '<a href="#" onclick="run(1, ' + ret[i]["id"] + ')">关机</a> <a href="#" onclick="run(2, ' + ret[i]["id"] + ')">重启</a>' : "") + "</td></tr>";
+                            + "</td><td>" + (is_online == 1 ? '<a href="#" onclick="run(1, ' + ret[i]["id"] + ')">关机</a> <a href="#" onclick="run(2, ' + ret[i]["id"] + ')">重启</a>' : "") + "</td>"
+                            + "</td><td>" + '<a href="#" onclick="edit(' + ret[i]["id"] + ')">编辑</a> <a href="#" onclick="del(' + ret[i]["id"] + ')">删除</a>' + "</td></tr>";
                     }
                     $("table").html(html);
-                },
-                error: function (xhr, status) {
-                    if (xhr.status == 403) {
-                        reLogin();
-                    }
                 }
-            })
+            });
         }
 
         function run(type, id) {
@@ -115,6 +123,27 @@
                     error: function (xhr, status) {
                         if (xhr.status == 403) {
                             reLogin();
+                        }
+                    }
+                })
+            }
+        }
+
+        function edit() {
+
+        }
+
+        function del(id) {
+            console.log(axios.defaults);
+            if (confirm("确定要删除吗?")) {
+                axios.post("/delete_client", "client_id="+id)
+                .then(function (ret) {
+                    if (ret) {
+                        ret = ret.data;
+                        if (ret.ok) {
+                            getData();
+                        } else {
+                            alert(ret.message);
                         }
                     }
                 })
@@ -200,7 +229,11 @@
         }
 
         getData();
-        setInterval(getData, 5000);
+        var dataInter = setInterval(getData, 5000);
+
+        function clearUserInterval() {
+            clearInterval(dataInter);
+        }
     </script>
 </body>
 

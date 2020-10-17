@@ -7,7 +7,7 @@ mod model;
 use db::{Db};
 use function::Res;
 use rocket_contrib::templates::Template;
-use model::{check_login, get_client_statistics, StatisticsRow, set_task as set_operation};
+use model::{check_login, get_client_statistics, StatisticsRow, set_task as set_operation, delete_client as delete_client_operation};
 use std::collections::HashMap;
 
 #[macro_use] extern crate rocket;
@@ -319,6 +319,24 @@ fn operate(admin: Admin, params:Form<OprateParams>) -> Json<Res> {
     } 
 }
 
+#[derive(FromForm, Debug)]
+struct DeleteClientParams {
+    client_id: u64,
+}
+
+#[post("/delete_client", data="<params>")]
+fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res> 
+{
+    match delete_client_operation(params.client_id) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
         println!("数据库加载错误，{}", e);
@@ -331,7 +349,10 @@ fn main() {
     }
 
     rocket::ignite()
-    .mount("/", routes![get_task, set_status, set_task, check_online, login, do_login, statistics, get_statistics, operate, index])
+    .mount("/", routes![get_task, set_status, 
+    set_task, check_online, login, do_login,
+     statistics, get_statistics, operate, index,
+     delete_client])
     .attach(Template::fairing())
     .launch();
 }

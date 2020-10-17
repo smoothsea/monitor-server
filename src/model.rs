@@ -167,3 +167,15 @@ pub fn set_task(client_id: u64, task: String) -> Result<(), Box<dyn Error>>
         Err("数据库连接错误")?
     }
 }
+
+pub fn delete_client(client_id: u64) -> Result<(), Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        if let Err(e) = db.conn.execute(&format!("delete from client where id={}", client_id), NO_PARAMS) {
+            Err("删除失败")?;
+        }
+        Ok(())
+    } else {
+        Err("数据库连接错误")?
+    }
+}
