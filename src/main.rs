@@ -7,7 +7,7 @@ mod model;
 use db::{Db};
 use function::Res;
 use rocket_contrib::templates::Template;
-use model::{check_login, get_client_statistics, StatisticsRow, set_task as set_operation, delete_client as delete_client_operation};
+use model::{check_login, get_client_statistics, StatisticsRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation};
 use std::collections::HashMap;
 
 #[macro_use] extern crate rocket;
@@ -15,6 +15,7 @@ use std::collections::HashMap;
 
 use rocket::Outcome;
 use rocket::http::Status;
+use rocket_contrib::serve::{StaticFiles};
 use rocket::request::{self, Request, FromRequest, Form};
 use rocket::response::Redirect;
 use rocket::http::{Cookie, Cookies};
@@ -48,15 +49,17 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
                 Ok(vec![row.get(0)?, row.get(1)?])
             }) {
                 Ok(ret) => {
-                    if (ret[1] == 1) {
-                        db.conn.execute("update client set is_online=1,last_online_time=?1 where client_ip=?2", &[&now[..], &remote_ip]);
+                    if ret[1] == 1 {
+                        if let Err(_e) = db.conn.execute("update client set is_online=1,last_online_time=?1 where client_ip=?2", &[&now[..], &remote_ip]) {
+                            return Outcome::Failure((Status::BadRequest, ClientError::NotPermit));
+                        }
                         
                         return Outcome::Success(Client(ret[0]));
                     } else {
                         Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
                     }
                 },
-                Err(e) => {
+                Err(_e) => {
                     Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
                 }
             }
@@ -101,7 +104,6 @@ fn check_online() -> &'static str {
         return "error";
     }
 
-    let ret = db.conn.prepare("select * from client where is_online=1");
     let mut ids = Vec::new();
     if let Ok(mut smtm) = db.conn.prepare("select id,last_online_time from client where is_online=1") {
         if let Ok(mut ret) = smtm.query(NO_PARAMS) {
@@ -121,7 +123,7 @@ fn check_online() -> &'static str {
                 }
 
                 if let Ok(time) =  NaiveDateTime::parse_from_str(&last_online_time, "%Y-%m-%d %H:%M:%S") {
-                    if (now - time.timestamp() + 3600*8 > offline_second) {
+                    if now - time.timestamp() + 3600*8 > offline_second {
                         ids.push(id);
                     } 
                 } else {
@@ -132,14 +134,14 @@ fn check_online() -> &'static str {
         }
     }
 
-    if (ids.len() > 0) {
+    if ids.len() > 0 {
         let mut sql = "update client set is_online=0 where ".to_string();
         for id in ids {
             sql = format!("{} id={} or", sql, id);
         }        
         let len = sql.len();
         sql = sql.chars().take(len-2).collect();
-        db.conn.execute(&sql, NO_PARAMS);
+        db.conn.execute(&sql, NO_PARAMS).unwrap_or_default();
     }
 
     ""
@@ -168,12 +170,12 @@ fn get_task(client:Client) -> Json<Res>{
                     }
                 }
 
-                if let Err(e) = db.conn.execute(&format!("update task set is_valid=?1,pulled_at='{}' where client_id=?2 and is_valid=?3", now), &[0, client_id, 1]) {
+                if let Err(_e) = db.conn.execute(&format!("update task set is_valid=?1,pulled_at='{}' where client_id=?2 and is_valid=?3", now), &[0, client_id, 1]) {
                     return Res::error(Some("操作错误".to_string()));
                 }
             }
         },
-        Error => {
+        Err(_e) => {
             return Res::error(Some("数据查询错误".to_string()));
         }
     }
@@ -205,15 +207,13 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
         return Res::error(Some("数据库连接错误".to_string()));
     }
 
-    if let Err(e) = db.conn.execute(&format!("insert into cpu_info (client_id,cpu_user,cpu_system,cpu_idle,cpu_nice,created_at) values ({}, {}, {}, {}, {}, '{}')", client_id,
+    if let Err(_e) = db.conn.execute(&format!("insert into cpu_info (client_id,cpu_user,cpu_system,cpu_idle,cpu_nice,created_at) values ({}, {}, {}, {}, {}, '{}')", client_id,
     status.cpu_user.unwrap_or_else(||{return 0.0}), status.cpu_system.unwrap_or_else(||{return 0.0}), status.cpu_idle.unwrap_or_else(||{return 0.0}), status.cpu_nice.unwrap_or_else(||{return 0.0}),
     now),
          NO_PARAMS) {
         return Res::error(Some("插入失败".to_string()));
     }
 
-    let mf = status.memory_free.unwrap_or_else(||{return 0;});
-    let mt = status.memory_total.unwrap_or_else(||{return 0;});
     if let Err(e) = db.conn.execute(&format!("insert into memory_info (client_id,memory_free,memory_total,created_at) values ({}, {}, {}, '{}')", client_id,
     status.memory_free.unwrap_or_else(||{return 0}), status.memory_total.unwrap_or_else(||{return 0}),
     now), 
@@ -243,7 +243,7 @@ struct TaskParams {
 fn set_task(task: Json<TaskParams>) -> Json<Res>{
     let task_type = task.task_type.clone();
     match set_operation(task.client_id, task_type) {
-        Ok(d) => {
+        Ok(_d) => {
             return Res::ok(None, None);
         },
         Err(e) => {
@@ -278,7 +278,7 @@ fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Template{
 
             cookies.add_private(Cookie::new("user_id", id.to_string()));
         },
-        Err(e) => {
+        Err(_e) => {
             render.insert("url", "/login");
             render.insert("message", "账号或密码错误");;
         }
@@ -287,12 +287,12 @@ fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Template{
 }
 
 #[get("/statistics")]
-fn statistics(admin: Admin) -> Template{
+fn statistics(_admin: Admin) -> Template{
     Template::render("statistics", "")
 }
 
 #[post("/get_statistics")]
-fn get_statistics(admin: Admin) -> Json<Vec<StatisticsRow>>{
+fn get_statistics(_admin: Admin) -> Json<Vec<StatisticsRow>>{
     if let Ok(ret) = get_client_statistics() {
         Json(ret)     
     } else {
@@ -307,10 +307,10 @@ struct OprateParams {
 }
 
 #[post("/operate", data="<params>")]
-fn operate(admin: Admin, params:Form<OprateParams>) -> Json<Res> {
+fn operate(_admin: Admin, params:Form<OprateParams>) -> Json<Res> {
     let operation = params.operation.clone();
     match set_operation(params.client_id, operation) {
-        Ok(d) => {
+        Ok(_d) => {
             return Res::ok(None, None);
         },
         Err(e) => {
@@ -337,6 +337,27 @@ fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res>
     } 
 }
 
+#[derive(FromForm, Debug)]
+struct EditClientParams {
+    client_id: u64,
+    name: String,
+    client_ip: String,
+    is_enable: u32,  
+}
+
+#[post("/edit_client", data="<params>")]
+fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res> 
+{
+    match edit_client_operation(params.client_id, &params.name, &params.client_ip, params.is_enable) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
         println!("数据库加载错误，{}", e);
@@ -349,10 +370,11 @@ fn main() {
     }
 
     rocket::ignite()
+    .mount("/public", StaticFiles::from("./templates/static"))
     .mount("/", routes![get_task, set_status, 
     set_task, check_online, login, do_login,
      statistics, get_statistics, operate, index,
-     delete_client])
+     delete_client, edit_client])
     .attach(Template::fairing())
     .launch();
 }

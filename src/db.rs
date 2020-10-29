@@ -7,9 +7,9 @@ pub struct Db {
 }
 
 impl Db {
-    const current_version:u32 = 3;
-    const default_admin_username:&'static str = "admin";
-    const default_admin_password:&'static str = "21232f297a57a5a743894a0e4a801fc3";
+    const CURRENT_VESION:u32 = 3;
+    const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
+    const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
     pub fn get_db() ->  Result<Db, Box<dyn std::error::Error>> {
         Db::new("/data/monitor.db")
@@ -30,7 +30,7 @@ impl Db {
                 println!("{}", ret);
                 self.init_datebase(Some(ret))?;
             },
-            Err(e) => {
+            Err(_e) => {
                 self.init_datebase(None)?;
             }
         };
@@ -40,8 +40,8 @@ impl Db {
     fn init_datebase(&self, database_version: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
         let mut sqls = HashMap::new();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let sql1 = format!("insert into version (version,created_at) values ({}, '{}')", Db::current_version, &now);
-        let sql2 = format!("insert into admin (username,password,created_at) values ('{}', '{}', '{}')", Db::default_admin_username, Db::default_admin_password, &now);
+        let sql1 = format!("insert into version (version,created_at) values ({}, '{}')", Db::CURRENT_VESION, &now);
+        let sql2 = format!("insert into admin (username,password,created_at) values ('{}', '{}', '{}')", Db::DEFAULT_ADMIN_USERNAME, Db::DEFAULT_ADMIN_PASSWORD, &now);
         sqls.insert(1, vec![
             "drop table if exists version",
             "create table version (id integer primary key autoincrement,version integer not null,created_at datetime)",
@@ -73,7 +73,7 @@ impl Db {
         for (key, value) in sqls {
             match database_version {
                 Some(i) => {
-                    if (key > i) {
+                    if key > i {
                         for sql in value {
                             self.conn.execute(sql, NO_PARAMS)?;
                         }

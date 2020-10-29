@@ -37,7 +37,7 @@ impl Task {
 
     fn has_task(&self, name: &str) -> bool {
         for item in self.list.iter() {
-            if (item.name == name.to_string()) {
+            if item.name == name.to_string() {
                 return true;
             }
         }
@@ -46,7 +46,7 @@ impl Task {
 
     fn get_limit(&self, name: &str) -> TaskLimit {
         for item in self.list.iter() {
-            if (item.name == name.to_string()) {
+            if item.name == name.to_string() {
                 return item.limit.clone();
             }
         }
@@ -64,7 +64,7 @@ pub fn check_login(username: &str, password: &str) -> Result<i64, Box<dyn Error>
             Ok(ret) => {
                 return Ok(ret);
             },
-            Err(e) => {
+            Err(_e) => {
                Err("帐号密码错误")?;
             }
         }
@@ -131,7 +131,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                     return Ok(data);
                 }
             },
-            Err(e) => {
+            Err(_e) => {
                 Err("查询错误")?;
             }
         }
@@ -144,22 +144,21 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
 
 pub fn set_task(client_id: u64, task: String) -> Result<(), Box<dyn Error>>
 {
-    let tasks = Task::new();
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     if let Ok(db) = Db::get_db() {
-        if let Err(e) = db.conn.query_row::<i32, _, _>(&format!("select id from client where id={} and is_enable=1 and is_online=1", client_id), NO_PARAMS, |row| {
+        if let Err(_e) = db.conn.query_row::<i32, _, _>(&format!("select id from client where id={} and is_enable=1 and is_online=1", client_id), NO_PARAMS, |row| {
             row.get(0)
         }) {
             Err("客户不存在或者不在线")?;
         }
 
-        if let Ok(d) = db.conn.query_row::<i32, _, _>(&format!("select id from task where client_id={} and is_valid=1 and task_type='{}'", client_id, task), NO_PARAMS, |row| {
+        if let Ok(_d) = db.conn.query_row::<i32, _, _>(&format!("select id from task where client_id={} and is_valid=1 and task_type='{}'", client_id, task), NO_PARAMS, |row| {
             row.get(0)
         }) {
             Err("该任务只能提交一次")?;
         }
     
-        if let Err(e) = db.conn.execute(&format!("insert into task (client_id,task_type,created_at) values ({}, ?1, ?2)", client_id), &[&task, &now]) {
+        if let Err(_e) = db.conn.execute(&format!("insert into task (client_id,task_type,created_at) values ({}, ?1, ?2)", client_id), &[&task, &now]) {
             Err("插入失败")?;
         }
         Ok(())
@@ -171,8 +170,26 @@ pub fn set_task(client_id: u64, task: String) -> Result<(), Box<dyn Error>>
 pub fn delete_client(client_id: u64) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
-        if let Err(e) = db.conn.execute(&format!("delete from client where id={}", client_id), NO_PARAMS) {
+        if let Err(_e) = db.conn.execute(&format!("delete from client where id={}", client_id), NO_PARAMS) {
             Err("删除失败")?;
+        }
+        Ok(())
+    } else {
+        Err("数据库连接错误")?
+    }
+}
+
+pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32) -> Result<(), Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        if let Ok(_d) = db.conn.query_row::<i32, _, _>(&format!("select id from client where id!={} and client_ip=?1", client_id), &[&client_ip], |row| {
+            row.get(0)
+        }) {
+            Err("该用户ip已使用")?;
+        }
+
+        if let Err(_e) = db.conn.execute(&format!("update client set name=?1,client_ip=?2,is_enable={} where id={}", is_enable, client_id), &[&name, &client_ip]) {
+            Err("修改失败")?;
         }
         Ok(())
     } else {
