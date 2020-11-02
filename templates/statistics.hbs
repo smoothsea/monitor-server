@@ -70,8 +70,8 @@
                 <el-table-column label="操作">
                     <template slot-scope="scope">
                         <template v-if="scope.row.is_online == 1">
-                            <el-button size="mini" type="warning" @click="run(1, scope.row.id)">重启</el-button>
-                            <el-button size="mini" type="danger" @click="run(2, scope.row.id)">关机
+                            <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
+                            <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机
                             </el-button>
                         </template>
                     </template>
