@@ -3,6 +3,14 @@
 <head>
     <title>Statistics</title>
     <style>
+        .el-row {
+            margin-bottom: 20px;
+
+            &:last-child {
+                margin-bottom: 0;
+            }
+        }
+
         #customers {
             font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
             border-collapse: collapse;
@@ -48,42 +56,49 @@
 <body>
     <div id="app">
         <template>
-            <el-table :data="list" :row-class-name="tableRowClassName" border style="width: 100%">
-                <el-table-column prop="client_ip" label="客户端ip">
-                </el-table-column>
-                <el-table-column prop="name" label="名称">
-                </el-table-column>
-                <el-table-column prop="uptime" label="开机时长">
-                </el-table-column>
-                <el-table-column prop="boot_time" label="启动时间">
-                </el-table-column>
-                <el-table-column prop="is_online_text" label="在线">
-                </el-table-column>
-                <el-table-column prop="is_enable_text" label="启用">
-                </el-table-column>
-                <el-table-column prop="cpu" label="cpu">
-                </el-table-column>
-                <el-table-column prop="memory" label="内存">
-                </el-table-column>
-                <el-table-column prop="last_online_time" label="上次同步时间">
-                </el-table-column>
-                <el-table-column label="操作">
-                    <template slot-scope="scope">
-                        <template v-if="scope.row.is_online == 1">
-                            <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
-                            <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机
+            <el-row>
+                <el-button type="primary" @click="addClientPop()">添加客户端</el-button>
+            </el-row>
+            <el-row>
+                <el-table :data="list" :row-class-name="tableRowClassName" border style="width: 100%"
+                    v-loading="list_loading">
+                    <el-table-column prop="client_ip" label="客户端ip">
+                    </el-table-column>
+                    <el-table-column prop="name" label="名称">
+                    </el-table-column>
+                    <el-table-column prop="uptime" label="开机时长">
+                    </el-table-column>
+                    <el-table-column prop="boot_time" label="启动时间">
+                    </el-table-column>
+                    <el-table-column prop="is_online_text" label="在线">
+                    </el-table-column>
+                    <el-table-column prop="is_enable_text" label="启用">
+                    </el-table-column>
+                    <el-table-column prop="cpu" label="cpu">
+                    </el-table-column>
+                    <el-table-column prop="memory" label="内存">
+                    </el-table-column>
+                    <el-table-column prop="last_online_time" label="上次同步时间">
+                    </el-table-column>
+                    <el-table-column label="操作">
+                        <template slot-scope="scope">
+                            <template v-if="scope.row.is_online == 1">
+                                <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
+                                <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机
+                                </el-button>
+                            </template>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="管理">
+                        <template slot-scope="scope">
+                            <el-button size="mini" @click="task(scope.row.id)">任务</el-button>
+                            <el-button size="mini" @click="editPop(scope.row.id)">编辑</el-button>
+                            <el-button size="mini" type="danger" @click="del(scope.row.id)">删除
                             </el-button>
                         </template>
-                    </template>
-                </el-table-column>
-                <el-table-column label="管理">
-                    <template slot-scope="scope">
-                        <el-button size="mini" @click="editPop(scope.row.id)">编辑</el-button>
-                        <el-button size="mini" type="danger" @click="del(scope.row.id)">删除
-                        </el-button>
-                    </template>
-                </el-table-column>
-            </el-table>
+                    </el-table-column>
+                </el-table>
+            </el-row>
         </template>
 
 
@@ -104,6 +119,44 @@
                 <el-button type="primary" @click="edit">确 定</el-button>
             </span>
         </el-dialog>
+
+        <el-dialog title="新增客户端" :visible.sync="add_client_pop" width="30%">
+            <el-form ref="add_client_from" :model="add_client_form" label-width="80px">
+                <el-form-item label="名称">
+                    <el-input v-model="add_client_form.name"></el-input>
+                </el-form-item>
+                <el-form-item label="客户ip">
+                    <el-input v-model="add_client_form.client_ip"></el-input>
+                </el-form-item>
+            </el-form>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="add_client_pop = false">取 消</el-button>
+                <el-button type="primary" @click="addClient">确 定</el-button>
+            </span>
+        </el-dialog>
+
+        <el-dialog title="任务列表" :visible.sync="task_pop" @close="taskList=[];task_list_loading=true">
+            <el-table :data="taskList" border style="max-height: 535px;" :row-class-name="taskRowClassName"
+                v-loading="task_list_loading">
+                <el-table-column prop="task_type" label="任务类型">
+                </el-table-column>
+                <el-table-column prop="created_at" label="创建时间">
+                </el-table-column>
+                <el-table-column prop="pulled_at" label="执行时间">
+                </el-table-column>
+                <el-table-column prop="cancled_at" label="取消时间">
+                </el-table-column>
+                <el-table-column label="操作">
+                    <template slot-scope="scope">
+                        <template v-if="!scope.row.pulled_at && scope.row.is_valid">
+                            <el-button size="mini" type="warning"
+                                @click="cancel_task(scope.row.id, scope.row.client_id)">取消任务</el-button>
+                            </el-button>
+                        </template>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
     </div>
     <script src="/public/zepto.js"></script>
     <script src="/public/vue.js"></script>
@@ -116,19 +169,36 @@
                 sort: ["is_online desc", "id asc"],
                 list: [
                 ],
+                taskList: [
+                ],
                 dataInter: null,
                 user: "cpz",
                 edit_pop: false,
+                add_client_pop: false,
+                task_pop: false,
+                task_list_loading: true,
+                list_loading: true,
                 edit_form: {
                     id: "",
                     name: "",
                     client_ip: "",
                     is_enable: "",
                 },
+                add_client_form: {
+                    name: "",
+                    client_ip: "",
+                },
             },
             methods: {
                 tableRowClassName: function ({ row, rowIndex }) {
                     if (row.is_online == 1) {
+                        return "online";
+                    } else {
+                        return "offline";
+                    }
+                },
+                taskRowClassName: function ({ row, rowIndex }) {
+                    if (!row.pulled_at && row.is_valid) {
                         return "online";
                     } else {
                         return "offline";
@@ -165,6 +235,8 @@
                             }
                             _this.list = ret;
                         }
+                    }).then(function () {
+                        _this.list_loading = false;
                     });
                 },
                 formatSeconds: function (value) {
@@ -293,6 +365,9 @@
                     }
                     this.edit_pop = true;
                 },
+                addClientPop: function () {
+                    this.add_client_pop = true;
+                },
                 edit: function () {
                     var _this = this;
                     this.edit_form.client_id = this.edit_form.id;
@@ -313,21 +388,73 @@
                             }
                         })
                 },
+                addClient: function () {
+                    var _this = this;
+                    axios.post("/add_client", this.toFormData(this.add_client_form, ["name", "client_ip"]))
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.getData();
+                                    _this.add_client_pop = false;
+                                    _this.add_client_form = {
+                                        name: "",
+                                        client_ip: "",
+                                    };
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
+                task: function (id) {
+                    var _this = this;
+                    _this.task_pop = true;
+                    axios.post("/tasks", "client_id=" + id).then(function (ret) {
+                        if (ret.status) {
+                            ret = ret.data;
+                            _this.taskList = ret;
+                        }
+                    }).then(function () {
+                        _this.task_list_loading = false;
+                    });
+
+                },
+                cancel_task: function (id, client_id) {
+                    var _this = this;
+                    axios.post("/cancel_task", "task_id=" + id)
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.task(client_id);
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
                 toFormData: function (o, fields) {
                     var isLimitField = fields.length > 0 ? true : false;
                     var t = [];
                     for (var i in o) {
                         if (isLimitField) {
                             if (fields.indexOf(i) >= 0) {
-                                t.push(i+"="+o[i]);
+                                t.push(i + "=" + o[i]);
                             }
                         } else {
-                            t.push(i+"="+o[i]);
+                            t.push(i + "=" + o[i]);
                         }
                     }
                     return t.join("&");
                 }
-                
+
             },
             mounted: function () {
                 var _this = this;

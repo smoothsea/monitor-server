@@ -6,54 +6,6 @@ use chrono::{Local};
 
 use crate::db::Db;
 
-struct Task {
-    list: Vec<TaskConfig>,
-}
-
-struct TaskConfig {
-    name: String,
-    limit: TaskLimit 
-}
-
-#[derive(Clone, Debug)]
-enum TaskLimit {
-    One,
-    Infinite,
-}
-
-impl Task {
-    fn new() -> Task {
-        Task {
-            list: vec![TaskConfig {
-                name: "shutdown".to_string(),
-                limit: TaskLimit::One,
-            },
-            TaskConfig {
-                name: "reboot".to_string(),
-                limit: TaskLimit::One,
-            }],
-        }
-    }
-
-    fn has_task(&self, name: &str) -> bool {
-        for item in self.list.iter() {
-            if item.name == name.to_string() {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn get_limit(&self, name: &str) -> TaskLimit {
-        for item in self.list.iter() {
-            if item.name == name.to_string() {
-                return item.limit.clone();
-            }
-        }
-        TaskLimit::Infinite
-    }
-}
-
 pub fn check_login(username: &str, password: &str) -> Result<i64, Box<dyn Error>> 
 {
     let pass = format!("{:x}", md5::compute(password));
@@ -142,6 +94,53 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
     return Err("")?;
 }
 
+#[derive(Serialize,Debug)]
+pub struct TaskRow
+{
+    id: f64,
+    is_valid: i8,
+    task_type: String,
+    cancled_at: Option<String>,
+    pulled_at: Option<String>,
+    created_at: Option<String>,
+    client_id: f64,
+}
+
+pub fn get_tasks(client_id: u64) -> Result<Vec<TaskRow>, Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        let sql = format!("select id,is_valid,task_type,cancled_at,pulled_at,created_at,client_id from task where client_id={} order by created_at desc limit 10", client_id);
+        match db.conn.prepare(&sql) {
+            Ok(mut smtm) => {
+                if let Ok(mut ret) = smtm.query(NO_PARAMS) {
+                    let mut data:Vec<TaskRow> = vec!();
+                    while let Some(row) = ret.next().unwrap() {
+                        let item = TaskRow {
+                            id: row.get(0)?,
+                            is_valid: row.get(1)?,
+                            task_type: row.get(2)?,
+                            cancled_at: row.get(3)?,
+                            pulled_at: row.get(4)?,
+                            created_at: row.get(5)?,
+                            client_id: row.get(6)?,
+                        };
+                        data.push(item);
+                    }
+                    return Ok(data);
+                }
+            },
+            Err(_e) => {
+                println!("{:?}", _e);
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+
 pub fn set_task(client_id: u64, task: String) -> Result<(), Box<dyn Error>>
 {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -190,6 +189,45 @@ pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32) 
 
         if let Err(_e) = db.conn.execute(&format!("update client set name=?1,client_ip=?2,is_enable={} where id={}", is_enable, client_id), &[&name, &client_ip]) {
             Err("修改失败")?;
+        }
+        Ok(())
+    } else {
+        Err("数据库连接错误")?
+    }
+}
+
+pub fn add_client(name: &str, client_ip: &str) -> Result<(), Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        if let Ok(_d) = db.conn.query_row::<i32, _, _>("select id from client where client_ip=?1", &[&client_ip], |row| {
+            row.get(0)
+        }) {
+            Err("该ip已使用")?;
+        }
+        
+        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        if let Err(_e) = db.conn.execute(&format!("insert into client (name,client_ip,is_enable,created_at) values(?1,?2,{},'{}')", 1, now), &[&name, &client_ip]) {
+            println!("{:?}", _e);
+            Err("添加失败")?;
+        }
+        Ok(())
+    } else {
+        Err("数据库连接错误")?
+    }
+}
+
+pub fn cancel_task(task_id: u64) -> Result<(), Box<dyn Error>>
+{
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    if let Ok(db) = Db::get_db() {
+        if let Err(_e) = db.conn.query_row::<i32, _, _>(&format!("select id from task where id={} and is_valid=1", task_id), NO_PARAMS, |row| {
+            row.get(0)
+        }) {
+            Err("任务信息错误")?;
+        }
+    
+        if let Err(_e) = db.conn.execute(&format!("update task set is_valid=0,cancled_at=?1 where id={}", task_id), &[&now]) {
+            Err("取消失败")?;
         }
         Ok(())
     } else {

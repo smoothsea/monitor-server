@@ -7,7 +7,8 @@ mod model;
 use db::{Db};
 use function::Res;
 use rocket_contrib::templates::Template;
-use model::{check_login, get_client_statistics, StatisticsRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation};
+use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation,
+    add_client as add_client_operation,get_tasks,cancel_task as cancel_task_operation};
 use std::collections::HashMap;
 
 #[macro_use] extern crate rocket;
@@ -358,6 +359,58 @@ fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res>
     } 
 }
 
+#[derive(FromForm, Debug)]
+struct TasksParams {
+    client_id: u64,
+}
+
+#[post("/tasks", data="<params>")]
+fn tasks(_admin: Admin, params:Form<TasksParams>) -> Json<Vec<TaskRow>>
+{
+    if let Ok(ret) = get_tasks(params.client_id) {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+#[derive(FromForm, Debug)]
+struct CancelTaskParams {
+    task_id: u64,
+}
+
+#[post("/cancel_task", data="<params>")]
+fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res> 
+{
+    match cancel_task_operation(params.task_id) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+#[derive(FromForm, Debug)]
+struct AddClientParams {
+    name: String,
+    client_ip: String,
+}
+
+#[post("/add_client", data="<params>")]
+fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res> 
+{
+    match add_client_operation(&params.name, &params.client_ip) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
         println!("数据库加载错误，{}", e);
@@ -374,7 +427,8 @@ fn main() {
     .mount("/", routes![get_task, set_status, 
     set_task, check_online, login, do_login,
      statistics, get_statistics, operate, index,
-     delete_client, edit_client])
+     delete_client, edit_client, add_client, tasks,
+     cancel_task])
     .attach(Template::fairing())
     .launch();
 }
