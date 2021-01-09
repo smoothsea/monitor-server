@@ -49,6 +49,10 @@
         }
 
         .online {}
+
+        .dialog-footer {
+            display: none;
+        }
     </style>
     <link rel="stylesheet" href="/public/elementui.css">
 </head>
@@ -62,7 +66,7 @@
             <el-row>
                 <el-table :data="list" :row-class-name="tableRowClassName" border style="width: 100%"
                     v-loading="list_loading">
-                    <el-table-column prop="client_ip" label="客户端ip">
+                    <el-table-column prop="client_ip" label="客户端ip" min-width="60px">
                     </el-table-column>
                     <el-table-column prop="name" label="名称">
                     </el-table-column>
@@ -70,17 +74,15 @@
                     </el-table-column>
                     <el-table-column prop="boot_time" label="启动时间">
                     </el-table-column>
-                    <el-table-column prop="is_online_text" label="在线">
+                    <el-table-column prop="is_enable_text" label="启用" min-width="30px">
                     </el-table-column>
-                    <el-table-column prop="is_enable_text" label="启用">
-                    </el-table-column>
-                    <el-table-column prop="cpu" label="cpu">
+                    <el-table-column prop="cpu" label="cpu" min-width="40px">
                     </el-table-column>
                     <el-table-column prop="memory" label="内存">
                     </el-table-column>
                     <el-table-column prop="last_online_time" label="上次同步时间">
                     </el-table-column>
-                    <el-table-column label="操作">
+                    <el-table-column label="操作" min-width="70px">
                         <template slot-scope="scope">
                             <template v-if="scope.row.is_online == 1">
                                 <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
@@ -89,7 +91,7 @@
                             </template>
                         </template>
                     </el-table-column>
-                    <el-table-column label="管理">
+                    <el-table-column label="管理" min-width="100px">
                         <template slot-scope="scope">
                             <el-button size="mini" @click="task(scope.row.id)">任务</el-button>
                             <el-button size="mini" @click="editPop(scope.row.id)">编辑</el-button>
@@ -228,8 +230,7 @@
                             for (var i = 0, len = ret.length; i < len; i++) {
                                 var is_online = ret[i]["is_online"];
                                 ret[i]["uptime"] = is_online ? _this.formatSeconds(ret[i]["uptime"]) : "";
-                                ret[i]["is_online_text"] = is_online ? "在线" : "离线";
-                                ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "启动" : "停用";
+                                ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "是" : "否";
                                 ret[i]["cpu"] = is_online ? _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4), 100) + "%" : "";
                                 ret[i]["memory"] = is_online ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
                             }
@@ -454,7 +455,6 @@
                     }
                     return t.join("&");
                 }
-
             },
             mounted: function () {
                 var _this = this;
@@ -469,8 +469,10 @@
                         alert("网络错误");
                     }
                 });
+                document.querySelectorAll(".dialog-footer").forEach((node) => {node.style.display="block"});
+                
                 this.getData();
-                this.dataInter = setInterval(this.getData, 5000)
+                this.dataInter = setInterval(this.getData, 5000);
             }
         })
     </script>

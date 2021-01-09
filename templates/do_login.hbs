@@ -14,9 +14,10 @@
     <i>{{ message }}</i>
     <script>
         let url = '{{ url }}';
+        let timeout = ('{{ status }}' == 1) ? 0 : 1000;
         setTimeout(function () {
             location.href = url;
-        }, 1000);
+        }, timeout);
     </script>
 </body>
 

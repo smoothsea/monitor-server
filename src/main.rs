@@ -275,13 +275,14 @@ fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Template{
     match check_login(&params.username, &params.password) {
         Ok(id) => {
             render.insert("url", "/statistics");
-            render.insert("message", "登陆成功");
+            render.insert("status", "1");
 
             cookies.add_private(Cookie::new("user_id", id.to_string()));
         },
         Err(_e) => {
             render.insert("url", "/login");
-            render.insert("message", "账号或密码错误");;
+            render.insert("message", "账号或密码错误");
+            render.insert("status", "0");
         }
     }
     Template::render("do_login", &render)
