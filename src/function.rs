@@ -1,5 +1,8 @@
 use rocket_contrib::json::Json;
 use serde::{Serialize};
+use rand::Rng;
+
+use crate::model::clean_data as clean;
 
 #[derive(Serialize)]
 pub struct Res {
@@ -23,5 +26,14 @@ impl Res {
             message,
             data: None
         })
+    }
+}
+
+pub fn clean_data() {
+    let mut rng = rand::thread_rng();
+    let rand = rng.gen_range(0..100);
+
+    if rand < 2 {
+        if let Err(_) = clean(7){};
     }
 }

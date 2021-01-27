@@ -12,6 +12,7 @@ rusqlite = "0.23.1"
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 md5 = "0.7.0"
+rand = "0.8.0"
 
 [dependencies.rocket_contrib]
 version = "0.4.4"

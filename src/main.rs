@@ -5,7 +5,7 @@ mod function;
 mod model;
 
 use db::{Db};
-use function::Res;
+use function::{Res, clean_data};
 use rocket_contrib::templates::Template;
 use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation,
     add_client as add_client_operation,get_tasks,cancel_task as cancel_task_operation};
@@ -82,6 +82,8 @@ impl <'a, 'r> FromRequest<'a, 'r> for Admin {
     type Error = AdminError;
 
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+        clean_data();
+
         if let Some(id) = request.cookies().get_private("user_id") {
             if let Ok(d) = id.value().parse::<i32>() {
                 return Outcome::Success(Admin(d));

@@ -2,9 +2,29 @@ use std::error::Error;
 use md5;
 use rusqlite::{NO_PARAMS};
 use serde::{Serialize};
-use chrono::{Local};
+use chrono::{Local, Duration};
+use core::ops::Sub;
 
 use crate::db::Db;
+
+pub fn clean_data(save_days: i64) -> Result<(), Box<dyn Error>> {
+    let duration = Duration::days(save_days);
+    let time = Local::now().sub(duration).format("%Y-%m-%d %H:%M:%S").to_string();
+
+    if let Ok(db) = Db::get_db() {
+        if let Err(_e) = db.conn.execute("delete from cpu_info where created_at<?1", &[&time]) {
+            Err("清理失败")?;
+        }
+
+        if let Err(_e) = db.conn.execute("delete from memory_info where created_at<?1", &[&time]) {
+            Err("清理失败")?;
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    Ok(())
+}
 
 pub fn check_login(username: &str, password: &str) -> Result<i64, Box<dyn Error>> 
 {
