@@ -70,6 +70,11 @@ impl Db {
             "CREATE INDEX m_cid ON memory_info(client_id)",
         ]);
 
+        sqls.insert(4, vec![
+            "alter table client add system_version varchar(50)",
+            "alter table client add package_manager_update_count integer",
+        ]);
+
         for (key, value) in sqls {
             match database_version {
                 Some(i) => {

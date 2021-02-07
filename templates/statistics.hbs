@@ -59,7 +59,7 @@
         }
 
         .memory-chat {
-            margin-top: 50px;
+            margin-top: 90px;
             text-align: center;
             padding-left: 50px;
             height: 350px;
@@ -77,37 +77,41 @@
             <el-row>
                 <el-table :data="list" :row-class-name="tableRowClassName" border style="width: 100%"
                     v-loading="list_loading">
-                    <el-table-column prop="client_ip" label="客户端ip" min-width="60px">
+                    <el-table-column prop="client_ip" header-align="left" fixed label="客户端ip" width="120px">
                     </el-table-column>
-                    <el-table-column prop="name" label="名称">
+                    <el-table-column prop="name" header-align="left" fixed label="名称" width="200px">
                     </el-table-column>
-                    <el-table-column prop="uptime" label="开机时长">
+                    <el-table-column prop="uptime" header-align="left" label="开机时长" width="240px">
                     </el-table-column>
-                    <el-table-column prop="boot_time" label="启动时间">
+                    <el-table-column prop="system_version" header-align="left" label="系统版本" width="280px">
                     </el-table-column>
-                    <el-table-column prop="is_enable_text" label="启用" min-width="30px">
+                    <el-table-column prop="package_manager" header-align="left" label="包管理器" width="150px">
                     </el-table-column>
-                    <el-table-column prop="cpu" label="cpu" min-width="40px">
+                    <el-table-column prop="boot_time" header-align="left" label="启动时间" width="180px">
                     </el-table-column>
-                    <el-table-column prop="memory" label="内存">
+                    <el-table-column prop="is_enable_text" header-align="left" label="启用" width="70px">
                     </el-table-column>
-                    <el-table-column prop="last_online_time" label="上次同步时间">
+                    <el-table-column prop="cpu" header-align="left" label="cpu" width="100px">
                     </el-table-column>
-                    <el-table-column label="操作" min-width="70px">
+                    <el-table-column prop="memory" header-align="left" label="内存" width="210px">
+                    </el-table-column>
+                    <el-table-column prop="last_online_time" header-align="left" label="上次同步时间" width="220px">
+                    </el-table-column>
+                    <el-table-column label="管理" header-align="left" width="230px">
+                        <template slot-scope="scope">
+                            <el-button size="mini" @click="task(scope.row.id)">任务</el-button>
+                            <el-button size="mini" @click="editPop(scope.row.id)">编辑</el-button>
+                            <el-button size="mini" type="danger" @click="del(scope.row.id)">删除
+                            </el-button>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作" header-align="left" fixed="right" width="160px">
                         <template slot-scope="scope">
                             <template v-if="scope.row.is_online == 1">
                                 <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
                                 <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机
                                 </el-button>
                             </template>
-                        </template>
-                    </el-table-column>
-                    <el-table-column label="管理" min-width="100px">
-                        <template slot-scope="scope">
-                            <el-button size="mini" @click="task(scope.row.id)">任务</el-button>
-                            <el-button size="mini" @click="editPop(scope.row.id)">编辑</el-button>
-                            <el-button size="mini" type="danger" @click="del(scope.row.id)">删除
-                            </el-button>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -171,8 +175,12 @@
             </el-table>
         </el-dialog>
 
-        <div class="memory-chat">
-            <v-chart :options="memory_chat" />
+        <div class="memory-chat" v-if="cpu_chart_show">
+            <v-chart :options="cpu_chart" />
+        </div>
+
+        <div class="memory-chat" v-if="memory_chart_show">
+            <v-chart :options="memory_chart" />
         </div>
     </div>
     <style>
@@ -198,7 +206,9 @@
                 taskList: [
                 ],
                 dataInter: null,
-                user: "cpz",
+                memoryChartInter: null,
+                cpuChartInter: null,
+                user: "",
                 edit_pop: false,
                 add_client_pop: false,
                 task_pop: false,
@@ -214,24 +224,12 @@
                     name: "",
                     client_ip: "",
                 },
-                memory_chat: {
-                    title:{
-                        text:'内存占用'
-                    },
-                    legend:{
-                        data:['销量']
-                    },
-                    xAxis:{
-                        data:["苹果","橘子","橙子","香蕉","菠萝","榴莲","1", 2, 4, 5, 6, 7, 9]
-                    },
-                    yAxis:{
-                    },
-                    series:[{
-                        name:'销量',
-                        type:'line',
-                        data:[40,20,35,60,55,10,1,2,3,4,5,6,7,99,3,2,1,2]
-                    }]
-                }
+                memory_chart: {
+                },
+                memory_chart_show: false,
+                cpu_chart: {
+                },
+                cpu_chart_show: false
             },
             methods: {
                 tableRowClassName: function ({ row, rowIndex }) {
@@ -275,36 +273,118 @@
                                 ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "是" : "否";
                                 ret[i]["cpu"] = is_online ? _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4), 100) + "%" : "";
                                 ret[i]["memory"] = is_online ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
+                                ret[i]["package_manager"] = is_online && ret[i]["package_manager_update_count"] ? ret[i]["package_manager_update_count"]+" updates avaliable" : "";
                             }
                             _this.list = ret;
                         }
-
-                        _this.memory_chat =  {
-                                            title:{
-                                                text:'内存占用'
-                                            },
-                                            legend:{
-                                                data:['销量', "罗皮"]
-                                            },
-                                            xAxis:{
-                                                data:["苹果","橘子","橙子","香蕉","菠萝","榴莲","1", 2, 4, 5, 6, 7, 9]
-                                            },
-                                            yAxis:{
-                                            },
-                                            series:[{
-                                                name:'销量',
-                                                type:'line',
-                                                data:[40,20,35,60,55,10,1,2,3,4,5,6,7,99,3,2,1,2],
-                                            },
-                                            {
-                                                name:'罗皮',
-                                                type:'line',
-                                                data:[40,20,35,60,55,10,1,2,3,4,5,6,7,99,3,2,1,2],
-                                            },
-                                            ]
-                                        };
                     }).then(function () {
                         _this.list_loading = false;
+                    });
+                },
+                getLastDate: function (date) {
+                    let timestamp = (new Date(date)).getTime()/1000;
+                    timestamp = timestamp - timestamp%5;
+                    let newDate = new Date(timestamp*1000);
+                    return newDate.getMinutes().toString().padStart(2, "0")+":"+newDate.getSeconds().toString().padStart(2, "0");
+                },
+                getMemoryChart: function () {
+                    var _this = this;
+                    axios.post("/get_memory_chart", {}).then(function (ret) {
+                        if (ret.status) {
+                            ret = ret.data;
+                            let legend = [];
+                            let xAxis = [];
+                            let series = {};
+                            for (let i=0,len=ret.length; i<len; i++) {
+                                let name = ret[i]["name"];
+                                let rate = _this.tofixed((ret[i]["memory_total"] - ret[i]["memory_free"])/ret[i]["memory_total"]*100, 0);
+                                let date = _this.getLastDate(ret[i]["time"]);
+                                if (legend.indexOf(name) == -1) {
+                                    legend.push(name);
+                                    series[name] = {
+                                        name: name,
+                                        type: "line",
+                                        symbol: "none",
+                                        data: [rate]
+                                    };
+                                } else {
+                                    series[name]["data"].push(rate);
+                                }
+
+                                if (xAxis.indexOf(date) == -1) {
+                                    xAxis.push(date);
+                                }
+                            }
+
+                            series = Object.values(series);
+
+                            if (ret.length > 0) {
+                                _this.memory_chart =  {
+                                            title: {"text":"内存占用"},
+                                            legend:{
+                                                data:legend,
+                                            },
+                                            yAxis: {},
+                                            xAxis:{
+                                                data:xAxis,
+                                            },
+                                            series:series,
+                                            
+                                        };
+                                _this.memory_chart_show = true;
+                            }
+                        }
+                    }).then(function () {
+                    });
+                },
+                getCpuChart: function () {
+                    var _this = this;
+                    axios.post("/get_cpu_chart", {}).then(function (ret) {
+                        if (ret.status) {
+                            ret = ret.data;
+                            let legend = [];
+                            let xAxis = [];
+                            let series = {};
+                            for (let i=0,len=ret.length; i<len; i++) {
+                                let name = ret[i]["name"];
+                                let rate = _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 2), 100);
+                                let date = _this.getLastDate(ret[i]["time"]);
+                                if (legend.indexOf(name) == -1) {
+                                    legend.push(name);
+                                    series[name] = {
+                                        name: name,
+                                        type: "line",
+                                        symbol: "none",
+                                        data: [rate]
+                                    };
+                                } else {
+                                    series[name]["data"].push(rate);
+                                }
+
+                                if (xAxis.indexOf(date) == -1) {
+                                    xAxis.push(date);
+                                }
+                            }
+
+                            series = Object.values(series);
+
+                            if (ret.length > 0) {
+                                _this.cpu_chart =  {
+                                            title: {"text":"CPU占用"},
+                                            legend:{
+                                                data:legend,
+                                            },
+                                            yAxis: {},
+                                            xAxis:{
+                                                data:xAxis,
+                                            },
+                                            series:series,
+                                            
+                                        };
+                                _this.cpu_chart_show = true;
+                            }
+                        }
+                    }).then(function () {
                     });
                 },
                 formatSeconds: function (value) {
@@ -378,6 +458,8 @@
                 },
                 clearUserInterval: function () {
                     clearInterval(this.dataInter);
+                    clearInterval(this.memoryChartInter);
+                    clearInterval(this.cpuChartInter);
                 },
                 run: function (type, id) {
                     var _this = this
@@ -525,14 +607,18 @@
             },
             mounted: function () {
                 var _this = this;
+                var isPop403 = false;
                 axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded';
                 axios.interceptors.response.use(function (response) {
                     return response;
                 }, function (error) {
-                    if (error.response.status == 403) {
+                    if (error.response.status == 403 && !isPop403) {
                         _this.clearUserInterval();
                         _this.reLogin();
+
+                        isPop403 = true;
                     } else {
+                        _this.clearUserInterval();
                         alert("网络错误");
                     }
                 });
@@ -540,6 +626,12 @@
                 
                 this.getData();
                 this.dataInter = setInterval(this.getData, 5000);
+
+                this.getMemoryChart();
+                this.memoryChartInter = setInterval(this.getMemoryChart, 10000);      
+
+                this.getCpuChart();
+                this.cpuChartInter = setInterval(this.getCpuChart, 10000); 
             }
         })
     </script>

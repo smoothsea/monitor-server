@@ -65,13 +65,16 @@ pub struct StatisticsRow
     cpu_idle: Option<f64>,
     memory_free: Option<f64>,
     memory_total: Option<f64>,
+    system_version: Option<String>,
+    package_manager_update_count: Option<i32>,
 }
 
 pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         let sql = "select client.id,client.client_ip,client.name,client.is_online,client.last_online_time,client.is_enable,client.created_at,client.uptime,client.boot_time,
-            cpu.cpu_user,cpu.cpu_system,cpu.cpu_nice,cpu.cpu_idle,memory.memory_free,memory.memory_total 
+            cpu.cpu_user,cpu.cpu_system,cpu.cpu_nice,cpu.cpu_idle,memory.memory_free,memory.memory_total,
+            client.system_version,client.package_manager_update_count
             from client
             left join (select * from cpu_info as info inner join (select max(id) as mid from cpu_info group by client_id) as least_info on info.id=least_info.mid) as cpu on cpu.client_id=client.id
             left join (select * from memory_info as info inner join (select max(id) as mid from memory_info group by client_id) as least_info on info.id=least_info.mid) as memory on memory.client_id=client.id
@@ -97,9 +100,117 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                             cpu_idle: row.get(12)?,
                             memory_free: row.get(13)?,
                             memory_total: row.get(14)?,
+                            system_version: row.get(15)?,
+                            package_manager_update_count: row.get(16)?,
                         };
                         data.push(item);
                     }
+                    return Ok(data);
+                }
+            },
+            Err(_e) => {
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+
+#[derive(Serialize,Debug)]
+pub struct MemoryChartLine
+{
+    name: String,
+    time: String,
+    memory_total: f64,
+    memory_free: f64,
+}
+
+pub fn get_memory_chart() -> Result<Vec<MemoryChartLine>, Box<dyn Error>>
+{
+    let duration = Duration::minutes(3);
+    let time = Local::now()
+        .sub(duration)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+    if let Ok(db) = Db::get_db() {
+        let sql = "select m.client_id,m.memory_free,m.memory_total,m.created_at,c.name from memory_info as m
+                    join client as c on m.client_id=c.id where m.created_at>?1
+        ";
+        match db.conn.prepare(sql) {
+            Ok(mut smtm) => {
+                if let Ok(mut ret) = smtm.query(&[&time]) {
+                    let mut data:Vec<MemoryChartLine> = vec!();
+                    while let Some(row) = ret.next().unwrap() {
+                        let name = row.get(4)?;
+                        let time = row.get(3)?;
+                        let memory_free = row.get(1)?;
+                        let memory_total = row.get(2)?;
+                        
+                        let line = MemoryChartLine{
+                            name,
+                            time,
+                            memory_total,
+                            memory_free,
+                        };
+                        data.push(line)
+                    }
+
+                    return Ok(data);
+                }
+            },
+            Err(_e) => {
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+
+#[derive(Serialize,Debug)]
+pub struct CpuChartLine
+{
+    name: String,
+    time: String,
+    cpu_system: f64,
+    cpu_user: f64,
+}
+
+pub fn get_cpu_chart() -> Result<Vec<CpuChartLine>, Box<dyn Error>>
+{
+    let duration = Duration::minutes(3);
+    let time = Local::now()
+        .sub(duration)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+    if let Ok(db) = Db::get_db() {
+        let sql = "select m.client_id,m.cpu_user,m.cpu_system,m.created_at,c.name from cpu_info as m
+                    join client as c on m.client_id=c.id where m.created_at>?1
+        ";
+        match db.conn.prepare(sql) {
+            Ok(mut smtm) => {
+                if let Ok(mut ret) = smtm.query(&[&time]) {
+                    let mut data:Vec<CpuChartLine> = vec!();
+                    while let Some(row) = ret.next().unwrap() {
+                        let name = row.get(4)?;
+                        let time = row.get(3)?;
+                        let cpu_user = row.get(1)?;
+                        let cpu_system = row.get(2)?;
+                        
+                        let line = CpuChartLine{
+                            name,
+                            time,
+                            cpu_system,
+                            cpu_user,
+                        };
+                        data.push(line)
+                    }
+
                     return Ok(data);
                 }
             },

@@ -8,7 +8,7 @@ use db::{Db};
 use function::{Res, clean_data};
 use rocket_contrib::templates::Template;
 use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation,
-    add_client as add_client_operation,get_tasks,cancel_task as cancel_task_operation};
+    add_client as add_client_operation,get_tasks,cancel_task as cancel_task_operation,get_memory_chart as get_memory_chart_m,MemoryChartLine,get_cpu_chart as get_cpu_chart_m,CpuChartLine};
 use std::collections::HashMap;
 
 #[macro_use] extern crate rocket;
@@ -197,6 +197,8 @@ struct StatusParams<'a> {
     boot_time: Option<&'a str>,
     memory_free: Option<u64>,
     memory_total: Option<u64>,
+    system_version: Option<String>,
+    package_manager: Option<String>,
 }
 
 #[post("/set_status", data="<status>")]
@@ -225,9 +227,18 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
         return Res::error(Some("插入失败".to_string()));
     }
 
-    if let Err(e) = db.conn.execute(&format!("update client set uptime={},boot_time='{}' where id={}", status.uptime.unwrap_or_else(||{return 0}), 
-        &(status.boot_time.unwrap_or_else(||{return "";})), client_id), 
-    NO_PARAMS
+    let mut sql = format!("update client set uptime={},boot_time='{}'", status.uptime.unwrap_or_else(||{return 0}), 
+    &(status.boot_time.unwrap_or_else(||{return "";})));
+    if let Some(i) = status.system_version.clone() {
+        sql = format!("{},system_version='{}'", sql, i);
+    }
+    if let Some(i) = status.package_manager.clone() {
+        sql = format!("{},package_manager_update_count='{}'", sql, i);
+    }
+    sql = format!("{} where id={} ", sql, client_id);
+
+    if let Err(e) = db.conn.execute(&sql, 
+        NO_PARAMS
     ) {
         println!("{:?}", e);
         return Res::error(Some("插入失败".to_string()));
@@ -301,6 +312,24 @@ fn get_statistics(_admin: Admin) -> Json<Vec<StatisticsRow>>{
         Json(ret)     
     } else {
         Json(vec!())
+    }
+}
+
+#[post("/get_memory_chart")]
+fn get_memory_chart(_admin: Admin) -> Json<Option<Vec<MemoryChartLine>>>{
+    if let Ok(ret) = get_memory_chart_m() {
+        Json(Some(ret))     
+    } else {
+        Json(None)
+    }
+}
+
+#[post("/get_cpu_chart")]
+fn get_cpu_chart(_admin: Admin) -> Json<Option<Vec<CpuChartLine>>>{
+    if let Ok(ret) = get_cpu_chart_m() {
+        Json(Some(ret))     
+    } else {
+        Json(None)
     }
 }
 
@@ -431,7 +460,7 @@ fn main() {
     set_task, check_online, login, do_login,
      statistics, get_statistics, operate, index,
      delete_client, edit_client, add_client, tasks,
-     cancel_task])
+     cancel_task,get_memory_chart,get_cpu_chart])
     .attach(Template::fairing())
     .launch();
 }
