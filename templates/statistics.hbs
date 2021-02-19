@@ -317,6 +317,12 @@
                             }
 
                             series = Object.values(series);
+                            lengend = legend.sort((left, right) => {
+                                return left > right ? 1 : -1;
+                            })
+                            series = series.sort((left, right) => {
+                                return left.name > right.name ? 1 : -1;
+                            })
 
                             if (ret.length > 0) {
                                 _this.memory_chart =  {
@@ -366,7 +372,14 @@
                                 }
                             }
 
+
                             series = Object.values(series);
+                            lengend = legend.sort((left, right) => {
+                                return left > right ? 1 : -1;
+                            })
+                            series = series.sort((left, right) => {
+                                return left.name > right.name ? 1 : -1;
+                            })
 
                             if (ret.length > 0) {
                                 _this.cpu_chart =  {
