@@ -85,7 +85,10 @@
                     </el-table-column>
                     <el-table-column prop="system_version" header-align="left" label="系统版本" width="280px">
                     </el-table-column>
-                    <el-table-column prop="package_manager" header-align="left" label="包管理器" width="150px">
+                    <el-table-column header-align="left" label="包管理器" width="200px">
+                        <template slot-scope="scope">
+                            <span v-html="scope.row.package_manager"></span> <a style="cursor: pointer;" @click="run(3, scope.row.id)" v-if="scope.row.package_manager">更新</a>
+                        </template>
                     </el-table-column>
                     <el-table-column prop="boot_time" header-align="left" label="启动时间" width="180px">
                     </el-table-column>
@@ -476,7 +479,18 @@
                 },
                 run: function (type, id) {
                     var _this = this
-                    var operation = type == 1 ? "shutdown" : "reboot"
+                    var operation
+                    switch (type) {
+                        case 1:
+                            operation = "shutdown"
+                            break
+                        case 2:
+                            operation = "reboot"
+                            break
+                        case 3:
+                            operation = "update"
+                            break
+                    }
                     this.$confirm('是否继续?', '提示', {
                         confirmButtonText: '确定',
                         cancelButtonText: '取消',

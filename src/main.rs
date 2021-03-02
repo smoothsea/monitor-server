@@ -234,6 +234,8 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
     }
     if let Some(i) = status.package_manager.clone() {
         sql = format!("{},package_manager_update_count='{}'", sql, i);
+    } else {
+        sql = format!("{},package_manager_update_count='{}'", sql, "0");
     }
     sql = format!("{} where id={} ", sql, client_id);
 
