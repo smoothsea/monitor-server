@@ -7,6 +7,7 @@ use core::ops::Sub;
 
 use crate::db::Db;
 
+// clean statistics data
 pub fn clean_data(save_days: i64) -> Result<(), Box<dyn Error>> {
     let duration = Duration::days(save_days);
     let time = Local::now().sub(duration).format("%Y-%m-%d %H:%M:%S").to_string();

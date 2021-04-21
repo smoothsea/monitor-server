@@ -27,7 +27,6 @@ impl Db {
            row.get(0)
         }) {
             Ok(ret) => {
-                println!("{}", ret);
                 self.init_datebase(Some(ret))?;
             },
             Err(_e) => {

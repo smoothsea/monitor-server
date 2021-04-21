@@ -25,6 +25,15 @@ use chrono::{Local, NaiveDateTime};
 use serde::Deserialize;
 use rusqlite::{NO_PARAMS};
 
+#[macro_export]
+macro_rules! fatal {
+    ($($tt: tt)*) => {
+        use std::io::Write;
+        writeln!(&mut ::std::io::stderr(), $($tt)*).unwrap();        
+        ::std::process::exit(1);
+    };
+}
+
 #[derive(Debug)]
 struct Client(i32);
 
@@ -34,6 +43,7 @@ enum ClientError{
     DbError,
 }
 
+// client guard
 impl <'a, 'r> FromRequest<'a, 'r> for Client {
     type Error = ClientError;
 
@@ -46,19 +56,17 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
         let db:Db;
         if let Ok(d) = Db::get_db() {
             db = d;
-            match db.conn.query_row::<Vec<i32>,_,_>("select id,is_enable from client where client_ip=?1", &[&remote_ip], |row| {
-                Ok(vec![row.get(0)?, row.get(1)?])
+            // verifys client info
+            match db.conn.query_row::<Vec<i32>,_,_>("select id from client where client_ip=?1 and is_enable=1", &[&remote_ip], |row| {
+                Ok(vec![row.get(0)?])
             }) {
                 Ok(ret) => {
-                    if ret[1] == 1 {
-                        if let Err(_e) = db.conn.execute("update client set is_online=1,last_online_time=?1 where client_ip=?2", &[&now[..], &remote_ip]) {
-                            return Outcome::Failure((Status::BadRequest, ClientError::NotPermit));
-                        }
-                        
-                        return Outcome::Success(Client(ret[0]));
-                    } else {
-                        Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
+                    // updates client connection info
+                    if let Err(_e) = db.conn.execute("update client set is_online=1,last_online_time=?1 where client_ip=?2", &[&now[..], &remote_ip]) {
+                        return Outcome::Failure((Status::BadRequest, ClientError::NotPermit));
                     }
+                    
+                    return Outcome::Success(Client(ret[0]));
                 },
                 Err(_e) => {
                     Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
@@ -78,11 +86,12 @@ enum AdminError{
     NotPermit,
 }
 
+// admin guard
 impl <'a, 'r> FromRequest<'a, 'r> for Admin {
     type Error = AdminError;
 
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
-        clean_data();
+        clean_data();   // clean data
 
         if let Some(id) = request.cookies().get_private("user_id") {
             if let Ok(d) = id.value().parse::<i32>() {
@@ -96,6 +105,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Admin {
     }
 }
 
+// updates client online status
 #[get("/check_online")]
 fn check_online() -> &'static str {
     let now = Local::now().timestamp();
@@ -219,11 +229,10 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
         return Res::error(Some("插入失败".to_string()));
     }
 
-    if let Err(e) = db.conn.execute(&format!("insert into memory_info (client_id,memory_free,memory_total,created_at) values ({}, {}, {}, '{}')", client_id,
+    if let Err(_e) = db.conn.execute(&format!("insert into memory_info (client_id,memory_free,memory_total,created_at) values ({}, {}, {}, '{}')", client_id,
     status.memory_free.unwrap_or_else(||{return 0}), status.memory_total.unwrap_or_else(||{return 0}),
     now), 
     NO_PARAMS) {
-        println!("{:?}", e);
         return Res::error(Some("插入失败".to_string()));
     }
 
@@ -237,10 +246,9 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
     } 
     sql = format!("{} where id={} ", sql, client_id);
 
-    if let Err(e) = db.conn.execute(&sql, 
+    if let Err(_e) = db.conn.execute(&sql, 
         NO_PARAMS
     ) {
-        println!("{:?}", e);
         return Res::error(Some("插入失败".to_string()));
     }
 
@@ -445,13 +453,11 @@ fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res>
 
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
-        println!("数据库加载错误，{}", e);
-        std::process::exit(9);
+        fatal!("数据库加载错误, {}", e);
     });
 
     if let Err(e) = db.check_init() {
-        println!("{:?}", e);
-        std::process::exit(9);
+        fatal!("{}", e);
     }
 
     rocket::ignite()
