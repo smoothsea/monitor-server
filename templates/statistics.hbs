@@ -4,7 +4,7 @@
     <title>Statistics</title>
     <style>
         body {
-            font-size:1px;
+            font-size: 1px;
         }
 
         .el-row {
@@ -70,57 +70,61 @@
 
 <body>
     <div id="app">
-        <template>
-            <el-row>
-                <el-button type="primary" @click="addClientPop()">添加客户端</el-button>
-            </el-row>
-            <el-row>
-                <el-table :data="list" :row-class-name="tableRowClassName" border style="width: 100%"
-                    v-loading="list_loading">
+        <el-menu :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect">
+            <el-menu-item index="1">客户端</el-menu-item>
+            <el-menu-item index="2">CPU图</el-menu-item>
+            <el-menu-item index="3">内存图</el-menu-item>
+        </el-menu>
+        <div class="line"></div>
+
+        <div v-show="activeIndex==1" class="submenu">
+            <el-row type="flex" justify="center">
+                <el-table :data="list" :row-class-name="tableRowClassName" v-loading="list_loading">
                     <el-table-column prop="client_ip" header-align="left" fixed label="客户端ip" width="120px">
                     </el-table-column>
                     <el-table-column prop="name" header-align="left" fixed label="名称" width="200px">
-                    </el-table-column>
-                    <el-table-column prop="uptime" header-align="left" label="开机时长" width="240px">
-                    </el-table-column>
-                    <el-table-column prop="system_version" header-align="left" label="系统版本" width="280px">
-                    </el-table-column>
-                    <el-table-column header-align="left" label="包管理器" width="200px">
-                        <template slot-scope="scope">
-                            <span v-html="scope.row.package_manager"></span> <a style="cursor: pointer;" @click="run(3, scope.row.id)" v-if="scope.row.package_manager">更新</a>
-                        </template>
-                    </el-table-column>
-                    <el-table-column prop="boot_time" header-align="left" label="启动时间" width="180px">
-                    </el-table-column>
-                    <el-table-column prop="is_enable_text" header-align="left" label="启用" width="70px">
                     </el-table-column>
                     <el-table-column prop="cpu" header-align="left" label="cpu" width="100px">
                     </el-table-column>
                     <el-table-column prop="memory" header-align="left" label="内存" width="210px">
                     </el-table-column>
+                    <el-table-column header-align="left" label="包管理器" width="200px">
+                        <template slot-scope="scope">
+                            <span v-html="scope.row.package_manager"></span> <a style="cursor: pointer;"
+                                @click="run(3, scope.row.id)" v-if="scope.row.package_manager">更新</a>
+                        </template>
+                    </el-table-column>
                     <el-table-column prop="last_online_time" header-align="left" label="上次同步时间" width="220px">
+                    </el-table-column>
+                    <el-table-column prop="uptime" header-align="left" label="开机时长" width="240px">
+                    </el-table-column>
+                    <el-table-column prop="boot_time" header-align="left" label="启动时间" width="180px">
+                    </el-table-column>
+                    <el-table-column prop="is_enable_text" header-align="left" label="启用" width="70px">
+                    </el-table-column>
+                    <el-table-column prop="system_version" header-align="left" label="系统版本" width="280px">
                     </el-table-column>
                     <el-table-column label="管理" header-align="left" width="230px">
                         <template slot-scope="scope">
                             <el-button size="mini" @click="task(scope.row.id)">任务</el-button>
                             <el-button size="mini" @click="editPop(scope.row.id)">编辑</el-button>
-                            <el-button size="mini" type="danger" @click="del(scope.row.id)">删除
-                            </el-button>
+                            <el-button size="mini" type="danger" @click="del(scope.row.id)">删除</el-button>
                         </template>
                     </el-table-column>
                     <el-table-column label="操作" header-align="left" fixed="right" width="160px">
                         <template slot-scope="scope">
                             <template v-if="scope.row.is_online == 1">
                                 <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
-                                <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机
-                                </el-button>
+                                <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机</el-button>
                             </template>
                         </template>
                     </el-table-column>
                 </el-table>
             </el-row>
-        </template>
-
+            <el-row type="flex" justify="end">
+                <a style="cursor: pointer;font-size:15px" @click="addClientPop()">添加客户端</a>
+            </el-row>
+        </div>
 
         <el-dialog title="编辑" :visible.sync="edit_pop" width="30%">
             <el-form ref="edit_form" :model="edit_form" label-width="80px">
@@ -178,11 +182,11 @@
             </el-table>
         </el-dialog>
 
-        <div class="memory-chat" v-if="cpu_chart_show">
+        <div class="memory-chat submenu" v-if="activeIndex==2 && cpu_chart_show">
             <v-chart :options="cpu_chart" />
         </div>
 
-        <div class="memory-chat" v-if="memory_chart_show">
+        <div class="memory-chat submenu" v-if="activeIndex==3 &&  memory_chart_show">
             <v-chart :options="memory_chart" />
         </div>
     </div>
@@ -190,6 +194,10 @@
         .echarts {
             width: 100%;
             height: 100%;
+        }
+
+        .submenu {
+            padding: 10px;
         }
     </style>
     <script src="/public/zepto.js"></script>
@@ -203,6 +211,7 @@
         var app = new Vue({
             el: '#app',
             data: {
+                activeIndex: 1,
                 sort: ["is_online desc", "id asc"],
                 list: [
                 ],
@@ -276,7 +285,7 @@
                                 ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "是" : "否";
                                 ret[i]["cpu"] = is_online ? _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4), 100) + "%" : "";
                                 ret[i]["memory"] = is_online ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
-                                ret[i]["package_manager"] = is_online && ret[i]["package_manager_update_count"] ? ret[i]["package_manager_update_count"]+" updates avaliable" : "";
+                                ret[i]["package_manager"] = is_online && ret[i]["package_manager_update_count"] ? ret[i]["package_manager_update_count"] + " updates avaliable" : "";
                             }
                             _this.list = ret;
                         }
@@ -285,10 +294,10 @@
                     });
                 },
                 getLastDate: function (date) {
-                    let timestamp = (new Date(date)).getTime()/1000;
-                    timestamp = timestamp - timestamp%5;
-                    let newDate = new Date(timestamp*1000);
-                    return newDate.getMinutes().toString().padStart(2, "0")+":"+newDate.getSeconds().toString().padStart(2, "0");
+                    let timestamp = (new Date(date)).getTime() / 1000;
+                    timestamp = timestamp - timestamp % 5;
+                    let newDate = new Date(timestamp * 1000);
+                    return newDate.getMinutes().toString().padStart(2, "0") + ":" + newDate.getSeconds().toString().padStart(2, "0");
                 },
                 getMemoryChart: function () {
                     var _this = this;
@@ -298,9 +307,9 @@
                             let legend = [];
                             let xAxis = [];
                             let series = {};
-                            for (let i=0,len=ret.length; i<len; i++) {
+                            for (let i = 0, len = ret.length; i < len; i++) {
                                 let name = ret[i]["name"];
-                                let rate = _this.tofixed((ret[i]["memory_total"] - ret[i]["memory_free"])/ret[i]["memory_total"]*100, 0);
+                                let rate = _this.tofixed((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"] * 100, 0);
                                 let date = _this.getLastDate(ret[i]["time"]);
                                 if (legend.indexOf(name) == -1) {
                                     legend.push(name);
@@ -328,18 +337,18 @@
                             })
 
                             if (ret.length > 0) {
-                                _this.memory_chart =  {
-                                            title: {"text":"内存占用"},
-                                            legend:{
-                                                data:legend,
-                                            },
-                                            yAxis: {},
-                                            xAxis:{
-                                                data:xAxis,
-                                            },
-                                            series:series,
-                                            
-                                        };
+                                _this.memory_chart = {
+                                    title: { "text": "内存占用" },
+                                    legend: {
+                                        data: legend,
+                                    },
+                                    yAxis: {},
+                                    xAxis: {
+                                        data: xAxis,
+                                    },
+                                    series: series,
+
+                                };
                                 _this.memory_chart_show = true;
                             }
                         }
@@ -354,7 +363,7 @@
                             let legend = [];
                             let xAxis = [];
                             let series = {};
-                            for (let i=0,len=ret.length; i<len; i++) {
+                            for (let i = 0, len = ret.length; i < len; i++) {
                                 let name = ret[i]["name"];
                                 let rate = _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 2), 100);
                                 let date = _this.getLastDate(ret[i]["time"]);
@@ -385,18 +394,18 @@
                             })
 
                             if (ret.length > 0) {
-                                _this.cpu_chart =  {
-                                            title: {"text":"CPU占用"},
-                                            legend:{
-                                                data:legend,
-                                            },
-                                            yAxis: {},
-                                            xAxis:{
-                                                data:xAxis,
-                                            },
-                                            series:series,
-                                            
-                                        };
+                                _this.cpu_chart = {
+                                    title: { "text": "CPU占用" },
+                                    legend: {
+                                        data: legend,
+                                    },
+                                    yAxis: {},
+                                    xAxis: {
+                                        data: xAxis,
+                                    },
+                                    series: series,
+
+                                };
                                 _this.cpu_chart_show = true;
                             }
                         }
@@ -630,7 +639,10 @@
                         }
                     }
                     return t.join("&");
-                }
+                },
+                handleSelect: function (key, keyPath) {
+                    this.activeIndex = key;
+                },
             },
             mounted: function () {
                 var _this = this;
@@ -649,19 +661,18 @@
                         alert("网络错误");
                     }
                 });
-                document.querySelectorAll(".dialog-footer").forEach((node) => {node.style.display="block"});
-                
+                document.querySelectorAll(".dialog-footer").forEach((node) => { node.style.display = "block" });
+
                 this.getData();
                 this.dataInter = setInterval(this.getData, 5000);
 
                 this.getMemoryChart();
-                this.memoryChartInter = setInterval(this.getMemoryChart, 10000);      
+                this.memoryChartInter = setInterval(this.getMemoryChart, 10000);
 
                 this.getCpuChart();
-                this.cpuChartInter = setInterval(this.getCpuChart, 10000); 
+                this.cpuChartInter = setInterval(this.getCpuChart, 10000);
             }
         })
     </script>
 </body>
-
 </html>
