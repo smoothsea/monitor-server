@@ -15,6 +15,7 @@ use std::collections::HashMap;
 
 
 use rocket::Outcome;
+use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::serve::{StaticFiles};
 use rocket::request::{self, Request, FromRequest, Form};
@@ -24,6 +25,10 @@ use rocket_contrib::json::Json;
 use chrono::{Local, NaiveDateTime};
 use serde::Deserialize;
 use rusqlite::{NO_PARAMS};
+
+use std::net::TcpStream;
+use ssh2::Session; 
+use std::io::prelude::*;
 
 #[macro_export]
 macro_rules! fatal {
@@ -451,6 +456,35 @@ fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res>
     } 
 }
 
+#[derive(FromForm, Debug)]
+struct ConnectSshClientParams {
+    client_id: i64,
+}
+
+#[post("/connect_ssh_client", data="<params>")]
+fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, session: State<SshSession>) -> Json<Res>
+{
+    // TODO change state
+    if let Some(id) = session.client_id {
+        if id != params.client_id {
+            // session = State {
+                // SshSession {
+                // client_id: Some(params.client_id),
+                // session: None,
+                // }
+            // }
+        }
+    } else {
+        
+    }
+    return Res::error(Some("".to_string())); 
+}
+
+struct SshSession {
+    client_id: Option<i64>,
+    session: Option<Session>,
+}
+
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
         fatal!("数据库加载错误, {}", e);
@@ -459,6 +493,26 @@ fn main() {
     if let Err(e) = db.check_init() {
         fatal!("{}", e);
     }
+    
+    // // Connect to the local SSH server
+    // let tcp = TcpStream::connect("192.168.0.100:22").unwrap();
+    // let mut sess = Session::new().unwrap();
+    // sess.set_tcp_stream(tcp);
+    // sess.handshake().unwrap();
+
+    // sess.userauth_password("root", "wote1234").unwrap();
+
+    // let mut channel = sess.channel_session().unwrap();
+    // channel.exec("ls").unwrap();
+    // let mut s = String::new();
+    // channel.read_to_string(&mut s).unwrap();
+    // println!("{}", s);
+    // channel.wait_close();
+    // println!("{}", channel.exit_status().unwrap());
+    let ssh_client = SshSession {
+        client_id: None,
+        session: None,
+    };
 
     rocket::ignite()
     .mount("/public", StaticFiles::from("./templates/static"))
@@ -466,7 +520,10 @@ fn main() {
     set_task, check_online, login, do_login,
      statistics, get_statistics, operate, index,
      delete_client, edit_client, add_client, tasks,
-     cancel_task,get_memory_chart,get_cpu_chart])
+     cancel_task,get_memory_chart,get_cpu_chart,
+     connect_ssh_client,
+     ])
     .attach(Template::fairing())
+    .manage(ssh_client)
     .launch();
 }

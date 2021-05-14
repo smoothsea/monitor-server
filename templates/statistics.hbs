@@ -3,10 +3,6 @@
 <head>
     <title>Statistics</title>
     <style>
-        body {
-            font-size: 1px;
-        }
-
         .el-row {
             margin-bottom: 20px;
 
@@ -74,6 +70,7 @@
             <el-menu-item index="1">客户端</el-menu-item>
             <el-menu-item index="2">CPU图</el-menu-item>
             <el-menu-item index="3">内存图</el-menu-item>
+            <el-menu-item index="4">Terminal</el-menu-item>
         </el-menu>
         <div class="line"></div>
 
@@ -111,11 +108,12 @@
                             <el-button size="mini" type="danger" @click="del(scope.row.id)">删除</el-button>
                         </template>
                     </el-table-column>
-                    <el-table-column label="操作" header-align="left" fixed="right" width="160px">
+                    <el-table-column label="操作" header-align="left" fixed="right" width="240px">
                         <template slot-scope="scope">
                             <template v-if="scope.row.is_online == 1">
                                 <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
                                 <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机</el-button>
+                                <el-button size="mini" type="primary" @click="connectTerminal(scope.row.id)">Terminal</el-button>
                             </template>
                         </template>
                     </el-table-column>
@@ -189,6 +187,9 @@
         <div class="memory-chat submenu" v-if="activeIndex==3 &&  memory_chart_show">
             <v-chart :options="memory_chart" />
         </div>
+
+        <div v-show="activeIndex==4" id="terminal" style="background-color: #555;">
+        </div>
     </div>
     <style>
         .echarts {
@@ -206,11 +207,14 @@
     <script src="/public/elementui.js"></script>
     <script src="/public/echats.js"></script>
     <script src="/public/vue-echats.js"></script>
+    <script src="/public/term.js"></script>
     <script>
         Vue.component('v-chart', VueECharts)
         var app = new Vue({
             el: '#app',
             data: {
+                teriminalId: 0,
+                terminal: null,
                 activeIndex: 1,
                 sort: ["is_online desc", "id asc"],
                 list: [
@@ -643,6 +647,39 @@
                 handleSelect: function (key, keyPath) {
                     this.activeIndex = key;
                 },
+                initTerminal: function () {
+                    var that = this;
+                    this.terminal = new Terminal({
+                        cols: 80,
+                        rows: 24,
+                        screenKeys: true
+                    });
+
+                    term.on('data', function (data) {
+                        that.terminal.write(data)
+                    });
+
+                    this.terminal.open(document.getElementById("terminal"));
+
+                    this.terminal.write('\x1b[31mWelcome to term.js!\x1b[m\r\n');
+                },
+                connectTerminal: function (id) {
+                    let that = this;
+                    if (this.teriminalId != id) {
+                        axios.post("/connect_ssh_client", "client_id=" + id)
+                        .then(function (ret) {
+                            if (ret) {
+                                console.log(ret)
+                                ret = ret.data;
+                                if (ret.ok) {
+                                } else {
+                                }
+                            }
+                        })
+                    } else {
+                        that.write("Connect ok");
+                    }
+                },
             },
             mounted: function () {
                 var _this = this;
@@ -671,8 +708,11 @@
 
                 this.getCpuChart();
                 this.cpuChartInter = setInterval(this.getCpuChart, 10000);
-            }
+
+                this.initTerminal();
+            },
         })
     </script>
 </body>
+
 </html>
