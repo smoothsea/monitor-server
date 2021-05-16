@@ -68,14 +68,19 @@ pub struct StatisticsRow
     memory_total: Option<f64>,
     system_version: Option<String>,
     package_manager_update_count: Option<i32>,
+    ssh_address: Option<String>,
+    ssh_username: Option<String>,
+    ssh_password: Option<String>,
 }
 
 pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
 {
+    //TODO return encrypted ssh_password
     if let Ok(db) = Db::get_db() {
         let sql = "select client.id,client.client_ip,client.name,client.is_online,client.last_online_time,client.is_enable,client.created_at,client.uptime,client.boot_time,
             cpu.cpu_user,cpu.cpu_system,cpu.cpu_nice,cpu.cpu_idle,memory.memory_free,memory.memory_total,
-            client.system_version,client.package_manager_update_count
+            client.system_version,client.package_manager_update_count,
+            ssh_address,ssh_username,ssh_password
             from client
             left join (select * from cpu_info as info inner join (select max(id) as mid from cpu_info group by client_id) as least_info on info.id=least_info.mid) as cpu on cpu.client_id=client.id
             left join (select * from memory_info as info inner join (select max(id) as mid from memory_info group by client_id) as least_info on info.id=least_info.mid) as memory on memory.client_id=client.id
@@ -103,6 +108,9 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                             memory_total: row.get(14)?,
                             system_version: row.get(15)?,
                             package_manager_update_count: row.get(16)?,
+                            ssh_address: row.get(17)?,
+                            ssh_username: row.get(18)?,
+                            ssh_password: row.get(19)?,
                         };
                         data.push(item);
                     }
@@ -310,7 +318,37 @@ pub fn delete_client(client_id: u64) -> Result<(), Box<dyn Error>>
     }
 }
 
-pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32) -> Result<(), Box<dyn Error>>
+
+#[derive(Serialize,Debug)]
+pub struct Client
+{
+    pub id: f64,
+    pub ssh_address: Option<String>,
+    pub ssh_username: Option<String>,
+    pub ssh_password: Option<String>,
+}
+pub fn get_client(client_id: i64) -> Result<Client, Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        if let Ok(ret) = db.conn.query_row(&format!("select id,ssh_address,ssh_username,ssh_password from client where id={}", client_id), NO_PARAMS, |row| {
+            let client = Client{
+                id: row.get(0)?,
+                ssh_address: row.get(1)?,
+                ssh_username: row.get(2)?,
+                ssh_password: row.get(3)?,
+            };
+            return Ok(client);
+        }) {
+            Ok(ret)
+        } else {
+            Err("用户信息错误")?
+        }
+    } else {
+        Err("数据库连接错误")?
+    }
+}
+
+pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32, ssh_address: &str, ssh_username: &str, ssh_password: &str) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         if let Ok(_d) = db.conn.query_row::<i32, _, _>(&format!("select id from client where id!={} and client_ip=?1", client_id), &[&client_ip], |row| {
@@ -319,7 +357,8 @@ pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32) 
             Err("该用户ip已使用")?;
         }
 
-        if let Err(_e) = db.conn.execute(&format!("update client set name=?1,client_ip=?2,is_enable={} where id={}", is_enable, client_id), &[&name, &client_ip]) {
+        if let Err(_e) = db.conn.execute(&format!("update client set name=?1,client_ip=?2,ssh_address=?3,ssh_username=?4,ssh_password=?5,is_enable={} where id={}",
+             is_enable, client_id), &[&name, &client_ip, &ssh_address, &ssh_username, &ssh_password]) {
             Err("修改失败")?;
         }
         Ok(())
@@ -328,7 +367,7 @@ pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32) 
     }
 }
 
-pub fn add_client(name: &str, client_ip: &str) -> Result<(), Box<dyn Error>>
+pub fn add_client(name: &str, client_ip: &str, ssh_address: &str, ssh_username: &str, ssh_password: &str) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         if let Ok(_d) = db.conn.query_row::<i32, _, _>("select id from client where client_ip=?1", &[&client_ip], |row| {
@@ -338,7 +377,8 @@ pub fn add_client(name: &str, client_ip: &str) -> Result<(), Box<dyn Error>>
         }
         
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        if let Err(_e) = db.conn.execute(&format!("insert into client (name,client_ip,is_enable,created_at) values(?1,?2,{},'{}')", 1, now), &[&name, &client_ip]) {
+        if let Err(_e) = db.conn.execute(&format!("insert into client (name,client_ip,is_enable,created_at) values(?1,?2,{},'{}')", 1, now),
+         &[&name, &client_ip, &ssh_address, &ssh_username, &ssh_password]) {
             println!("{:?}", _e);
             Err("添加失败")?;
         }

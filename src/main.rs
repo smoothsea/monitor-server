@@ -8,7 +8,8 @@ use db::{Db};
 use function::{Res, clean_data};
 use rocket_contrib::templates::Template;
 use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation,
-    add_client as add_client_operation,get_tasks,cancel_task as cancel_task_operation,get_memory_chart as get_memory_chart_m,MemoryChartLine,get_cpu_chart as get_cpu_chart_m,CpuChartLine};
+    add_client as add_client_operation,get_client,get_tasks,cancel_task as cancel_task_operation,get_memory_chart as get_memory_chart_m,MemoryChartLine,
+    get_cpu_chart as get_cpu_chart_m,CpuChartLine};
 use std::collections::HashMap;
 
 #[macro_use] extern crate rocket;
@@ -26,6 +27,7 @@ use chrono::{Local, NaiveDateTime};
 use serde::Deserialize;
 use rusqlite::{NO_PARAMS};
 
+use std::sync::{RwLock, Mutex};
 use std::net::TcpStream;
 use ssh2::Session; 
 use std::io::prelude::*;
@@ -384,27 +386,6 @@ fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res>
 }
 
 #[derive(FromForm, Debug)]
-struct EditClientParams {
-    client_id: u64,
-    name: String,
-    client_ip: String,
-    is_enable: u32,  
-}
-
-#[post("/edit_client", data="<params>")]
-fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res> 
-{
-    match edit_client_operation(params.client_id, &params.name, &params.client_ip, params.is_enable) {
-        Ok(_d) => {
-            return Res::ok(None, None);
-        },
-        Err(e) => {
-            return Res::error(Some(e.to_string())); 
-        }
-    } 
-}
-
-#[derive(FromForm, Debug)]
 struct TasksParams {
     client_id: u64,
 }
@@ -441,12 +422,41 @@ fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res>
 struct AddClientParams {
     name: String,
     client_ip: String,
+    ssh_address: Option<String>,
+    ssh_username: Option<String>,
+    ssh_password: Option<String>,
 }
 
 #[post("/add_client", data="<params>")]
 fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res> 
 {
-    match add_client_operation(&params.name, &params.client_ip) {
+    match add_client_operation(&params.name, &params.client_ip, 
+        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+#[derive(FromForm, Debug)]
+struct EditClientParams {
+    client_id: u64,
+    name: String,
+    client_ip: String,
+    is_enable: u32,  
+    ssh_address: Option<String>,
+    ssh_username: Option<String>,
+    ssh_password: Option<String>,
+}
+
+#[post("/edit_client", data="<params>")]
+fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res> 
+{
+    match edit_client_operation(params.client_id, &params.name, &params.client_ip, params.is_enable, 
+        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -464,25 +474,45 @@ struct ConnectSshClientParams {
 #[post("/connect_ssh_client", data="<params>")]
 fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, session: State<SshSession>) -> Json<Res>
 {
-    // TODO change state
-    if let Some(id) = session.client_id {
+    let client;
+    match get_client(params.client_id) {
+        Ok(c) => client = c,
+        Err(_e) => {
+            return Res::error(Some("客户错误".to_string())); 
+        },
+    }
+
+    let mut client_id = session.client_id.lock().unwrap(); 
+    let mut s = session.session.lock().unwrap();
+    let mut is_init = false;
+    if let Some(id) = *client_id {
         if id != params.client_id {
-            // session = State {
-                // SshSession {
-                // client_id: Some(params.client_id),
-                // session: None,
-                // }
-            // }
+            *client_id = Some(params.client_id);
+            is_init = true;
         }
     } else {
-        
+        *client_id = Some(params.client_id);
+        is_init = true;
     }
-    return Res::error(Some("".to_string())); 
+
+    if is_init {
+        // Connect to the local SSH server
+        let tcp = TcpStream::connect(client.ssh_address.unwrap_or("".to_string())).unwrap();
+        let mut sess = Session::new().unwrap();
+        sess.set_tcp_stream(tcp);
+        sess.handshake().unwrap();
+        if let Err(e) = sess.userauth_password(&client.ssh_username.unwrap_or("".to_string()), &client.ssh_password.unwrap_or("".to_string())) {
+            return Res::error(Some(format!("{}", e))); 
+        }
+        *s = Some(sess);
+    }
+
+    return Res::ok(None, None);
 }
 
 struct SshSession {
-    client_id: Option<i64>,
-    session: Option<Session>,
+    client_id: Mutex<Option<i64>>,
+    session: Mutex<Option<Session>>,
 }
 
 fn main() {
@@ -494,24 +524,10 @@ fn main() {
         fatal!("{}", e);
     }
     
-    // // Connect to the local SSH server
-    // let tcp = TcpStream::connect("192.168.0.100:22").unwrap();
-    // let mut sess = Session::new().unwrap();
-    // sess.set_tcp_stream(tcp);
-    // sess.handshake().unwrap();
 
-    // sess.userauth_password("root", "wote1234").unwrap();
-
-    // let mut channel = sess.channel_session().unwrap();
-    // channel.exec("ls").unwrap();
-    // let mut s = String::new();
-    // channel.read_to_string(&mut s).unwrap();
-    // println!("{}", s);
-    // channel.wait_close();
-    // println!("{}", channel.exit_status().unwrap());
     let ssh_client = SshSession {
-        client_id: None,
-        session: None,
+        client_id: Mutex::new(None),
+        session: Mutex::new(None),
     };
 
     rocket::ignite()

@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:u32 = 3;
+    const CURRENT_VESION:u32 = 5;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -27,16 +27,16 @@ impl Db {
            row.get(0)
         }) {
             Ok(ret) => {
-                self.init_datebase(Some(ret))?;
+                self.init_database(Some(ret))?;
             },
             Err(_e) => {
-                self.init_datebase(None)?;
+                self.init_database(None)?;
             }
         };
         Ok(())
     }
 
-    fn init_datebase(&self, database_version: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+    fn init_database(&self, database_version: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
         let mut sqls = HashMap::new();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let sql1 = format!("insert into version (version,created_at) values ({}, '{}')", Db::CURRENT_VESION, &now);
@@ -72,6 +72,12 @@ impl Db {
         sqls.insert(4, vec![
             "alter table client add system_version varchar(50)",
             "alter table client add package_manager_update_count integer",
+        ]);
+
+        sqls.insert(5, vec![
+            "alter table client add ssh_address varchar(50)",
+            "alter table client add ssh_username varchar(100)",
+            "alter table client add ssh_password varchar(100)",
         ]);
 
         for (key, value) in sqls {
