@@ -27,7 +27,7 @@ use chrono::{Local, NaiveDateTime};
 use serde::Deserialize;
 use rusqlite::{NO_PARAMS};
 
-use std::sync::{RwLock, Mutex};
+use std::sync::{ Mutex };
 use std::net::TcpStream;
 use ssh2::Session; 
 use std::io::prelude::*;
@@ -487,27 +487,63 @@ fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, sessio
     let mut is_init = false;
     if let Some(id) = *client_id {
         if id != params.client_id {
-            *client_id = Some(params.client_id);
             is_init = true;
         }
     } else {
-        *client_id = Some(params.client_id);
         is_init = true;
     }
 
     if is_init {
         // Connect to the local SSH server
-        let tcp = TcpStream::connect(client.ssh_address.unwrap_or("".to_string())).unwrap();
-        let mut sess = Session::new().unwrap();
-        sess.set_tcp_stream(tcp);
-        sess.handshake().unwrap();
-        if let Err(e) = sess.userauth_password(&client.ssh_username.unwrap_or("".to_string()), &client.ssh_password.unwrap_or("".to_string())) {
-            return Res::error(Some(format!("{}", e))); 
+        match TcpStream::connect(client.ssh_address.unwrap_or("".to_string())) {
+            Ok(r) => {
+                let tcp = r;
+                let mut sess = Session::new().unwrap();
+                sess.set_tcp_stream(tcp);
+                sess.handshake().unwrap();
+                if let Err(e) = sess.userauth_password(&client.ssh_username.unwrap_or("".to_string()), &client.ssh_password.unwrap_or("".to_string())) {
+                    return Res::error(Some(format!("{}", e))); 
+                }
+                *s = Some(sess);
+            },
+            Err(e) => {
+                return Res::error(Some(format!("{}", e)));
+            }
         }
-        *s = Some(sess);
     }
 
+    *client_id = Some(params.client_id);
     return Res::ok(None, None);
+}
+
+#[derive(FromForm, Debug)]
+struct SshCommandParams {
+    client_id: i64,
+    command: String,
+}
+
+#[post("/run_ssh_command", data="<params>")]
+fn run_ssh_command(_admin: Admin, params:Form<SshCommandParams>, session: State<SshSession>) -> Json<Res>
+{
+    let client_id = session.client_id.lock().unwrap(); 
+    let s = session.session.lock().unwrap();
+    if let Some(id) = *client_id {
+        if id != params.client_id {
+            return Res::error(Some("请重新连接终端".to_string()));
+        }
+    } else {
+        return Res::error(Some("请先连接终端".to_string()));
+    }
+
+    if let Some(session) = &*s {
+        let mut channel = session.channel_session().unwrap();
+        channel.exec(&params.command).unwrap();
+        let mut s = String::new();
+        channel.read_to_string(&mut s).unwrap();
+        return Res::ok(Some(s), None);
+    } else {
+        return Res::error(Some("查询错误".to_string()));
+    }
 }
 
 struct SshSession {
@@ -537,7 +573,7 @@ fn main() {
      statistics, get_statistics, operate, index,
      delete_client, edit_client, add_client, tasks,
      cancel_task,get_memory_chart,get_cpu_chart,
-     connect_ssh_client,
+     connect_ssh_client,run_ssh_command,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)

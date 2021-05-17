@@ -113,7 +113,7 @@
                             <template v-if="scope.row.is_online == 1">
                                 <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
                                 <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机</el-button>
-                                <el-button size="mini" type="primary" @click="connectTerminal(scope.row.id)">Terminal</el-button>
+                                <el-button size="mini" type="primary" @click="connectTerminal(scope.row.id, scope.row.ssh_address)">Terminal</el-button>
                             </template>
                         </template>
                     </el-table-column>
@@ -206,7 +206,7 @@
             <v-chart :options="memory_chart" />
         </div>
 
-        <div v-show="activeIndex==4" id="terminal" style="background-color: #555;">
+        <div v-show="activeIndex==4" id="terminal" style="background-color: #555">
         </div>
     </div>
     <style>
@@ -672,38 +672,72 @@
                     this.activeIndex = key;
                 },
                 initTerminal: function () {
-                    var that = this;
+                    var _this = this;
                     this.terminal = new Terminal({
                         cols: 80,
-                        rows: 24,
+                        rows: 40,
                         screenKeys: true
                     });
 
-                    term.on('data', function (data) {
-                        that.terminal.write(data)
+                    var command = "";
+                    this.terminal.on('data', function (data) {
+                        if (data != "\r") {
+                            command += data;
+                        } else {
+                            data = "\r\n";
+                            if (command != "") {
+                                _this.runTerminalCommand(_this.teriminalId, command).finally(function () {
+                                    command = "";
+                                });
+                            }
+
+                        }
+                        _this.terminal.write(data)
                     });
 
                     this.terminal.open(document.getElementById("terminal"));
-
-                    this.terminal.write('\x1b[31mWelcome to term.js!\x1b[m\r\n');
                 },
-                connectTerminal: function (id) {
-                    let that = this;
+                connectTerminal: function (id, address) {
+                    let _this = this;
                     if (this.teriminalId != id) {
                         axios.post("/connect_ssh_client", "client_id=" + id)
                         .then(function (ret) {
                             if (ret) {
-                                console.log(ret)
                                 ret = ret.data;
                                 if (ret.ok) {
+                                    _this.activeIndex = 4;
+                                    _this.teriminalId = id;
+                                    _this.terminal.write(address + " connect ok\r\n");
                                 } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    })
                                 }
                             }
                         })
                     } else {
-                        that.write("Connect ok");
+                        _this.terminal.write("Connect ok\r\n");
                     }
                 },
+                runTerminalCommand: function (id, command) {
+                    var _this = this;
+                    return axios.post("/run_ssh_command", "client_id=" + Number(id) + "&command=" + String(command))
+                    .then(function (ret) {
+                        if (ret) {
+                            ret = ret.data;
+                            if (ret.ok) {
+                                var message = ret.message.replaceAll("\n", "\r\n")
+                                _this.terminal.write("reply:  " + message + "\r\n");
+                            } else {
+                                _this.$message({
+                                    type: 'error',
+                                    message: ret.message
+                                })
+                            }
+                        }
+                    })
+                }
             },
             mounted: function () {
                 var _this = this;
