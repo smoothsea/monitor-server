@@ -29,7 +29,7 @@ impl Res {
     }
 }
 
-// clean statistics data randomly
+// Cleans statistics data randomly
 pub fn clean_data() {
     let mut rng = rand::thread_rng();
     let rand = rng.gen_range(0..100);

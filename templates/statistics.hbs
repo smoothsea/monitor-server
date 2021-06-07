@@ -60,13 +60,22 @@
             padding-left: 50px;
             height: 350px;
         }
+        [v-cloak] {
+            display:none;
+        }
     </style>
     <link rel="stylesheet" href="/public/elementui.css">
+    <script src="/public/zepto.js"></script>
+    <script src="/public/vue.js"></script>
+    <script src="/public/axios.js"></script>
+    <script src="/public/elementui.js"></script>
+    <script src="/public/echats.js"></script>
+    <script src="/public/vue-echats.js"></script>
+    <script src="/public/term.js"></script>
 </head>
-
 <body>
-    <div id="app">
-        <el-menu :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect">
+    <div id="app" v-clock>
+        <el-menu :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect" v-show="tab_show">
             <el-menu-item index="1">客户端</el-menu-item>
             <el-menu-item index="2">CPU图</el-menu-item>
             <el-menu-item index="3">内存图</el-menu-item>
@@ -120,7 +129,7 @@
                 </el-table>
             </el-row>
             <el-row type="flex" justify="end">
-                <a style="cursor: pointer;font-size:15px" @click="addClientPop()">添加客户端</a>
+                <a style="cursor: pointer;font-size:15px" @click="addClientPop()" v-show="!list_loading">添加客户端</a>
             </el-row>
         </div>
 
@@ -219,13 +228,7 @@
             padding: 10px;
         }
     </style>
-    <script src="/public/zepto.js"></script>
-    <script src="/public/vue.js"></script>
-    <script src="/public/axios.js"></script>
-    <script src="/public/elementui.js"></script>
-    <script src="/public/echats.js"></script>
-    <script src="/public/vue-echats.js"></script>
-    <script src="/public/term.js"></script>
+
     <script>
         Vue.component('v-chart', VueECharts)
         var app = new Vue({
@@ -269,7 +272,8 @@
                 memory_chart_show: false,
                 cpu_chart: {
                 },
-                cpu_chart_show: false
+                cpu_chart_show: false,
+                tab_show: false,
             },
             methods: {
                 tableRowClassName: function ({ row, rowIndex }) {
@@ -742,6 +746,7 @@
             mounted: function () {
                 var _this = this;
                 var isPop403 = false;
+                this.tab_show = true;
                 axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded';
                 axios.interceptors.response.use(function (response) {
                     return response;

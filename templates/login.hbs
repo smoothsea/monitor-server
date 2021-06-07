@@ -91,12 +91,35 @@
 <body>
     <section class="form animated flipInX">
         <h2>Login To Your Account</h2>
-        <form class="loginbox" autocomplete="off" method="POST" action="/login">
+        <form class="loginbox" autocomplete="off" method="POST">
             <input name="username" placeholder="username" type="text" id="username"></input>
             <input name="password" placeholder="password" type="password" id="password"></input>
             <button id="submit">Login</button>
         </form>
     </section>
+    <script src="/public/zepto.js"></script>
+    <script>
+        $("form").submit(function () {
+            var data = $(this).serialize();
+            $.ajax({
+                url: "/login",
+                dataType: "json",
+                type: "post",
+                data: data,
+                success: function (ret) {
+                    if (ret["ok"] == 1) {
+                        window.location.href = "/statistics";
+                    } else {
+                        alert(ret.message);
+                    }
+                },
+                error: function (e) {
+                    alert("网络错误");
+                },
+            })
+            return false;
+        })
+    </script>
 </body>
 
 </html>

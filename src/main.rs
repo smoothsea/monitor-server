@@ -1,4 +1,5 @@
 #![feature(proc_macro_hygiene, decl_macro)]
+#[macro_use] extern crate rocket;
 
 mod db;
 mod function;
@@ -10,10 +11,6 @@ use rocket_contrib::templates::Template;
 use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation,
     add_client as add_client_operation,get_client,get_tasks,cancel_task as cancel_task_operation,get_memory_chart as get_memory_chart_m,MemoryChartLine,
     get_cpu_chart as get_cpu_chart_m,CpuChartLine};
-use std::collections::HashMap;
-
-#[macro_use] extern crate rocket;
-
 
 use rocket::Outcome;
 use rocket::State;
@@ -50,7 +47,7 @@ enum ClientError{
     DbError,
 }
 
-// client guard
+// Client guard
 impl <'a, 'r> FromRequest<'a, 'r> for Client {
     type Error = ClientError;
 
@@ -93,7 +90,7 @@ enum AdminError{
     NotPermit,
 }
 
-// admin guard
+// Admin guard
 impl <'a, 'r> FromRequest<'a, 'r> for Admin {
     type Error = AdminError;
 
@@ -298,22 +295,16 @@ struct LoginParams {
 }
  
 #[post("/login", data="<params>")]
-fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Template{
-    let mut render = HashMap::new();
+fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Json<Res>{
     match check_login(&params.username, &params.password) {
         Ok(id) => {
-            render.insert("url", "/statistics");
-            render.insert("status", "1");
-
             cookies.add_private(Cookie::new("user_id", id.to_string()));
+            return Res::ok(None, None);
         },
         Err(_e) => {
-            render.insert("url", "/login");
-            render.insert("message", "账号或密码错误");
-            render.insert("status", "0");
+            return Res::error(Some("帐号密码错误".to_string())); 
         }
     }
-    Template::render("do_login", &render)
 }
 
 #[get("/statistics")]
@@ -559,7 +550,6 @@ fn main() {
     if let Err(e) = db.check_init() {
         fatal!("{}", e);
     }
-    
 
     let ssh_client = SshSession {
         client_id: Mutex::new(None),
