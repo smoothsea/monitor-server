@@ -52,9 +52,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
     type Error = ClientError;
 
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
-        let remote_addr = request.remote().unwrap().to_string();
-        let remote:Vec<&str> = remote_addr.split(":").collect();
-        let remote_ip = remote[0];
+        let remote_ip = request.real_ip().unwrap_or(request.client_ip().unwrap()).to_string();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         let db:Db;

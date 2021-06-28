@@ -377,7 +377,7 @@ pub fn add_client(name: &str, client_ip: &str, ssh_address: &str, ssh_username: 
         }
         
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        if let Err(_e) = db.conn.execute(&format!("insert into client (name,client_ip,is_enable,created_at) values(?1,?2,{},'{}')", 1, now),
+        if let Err(_e) = db.conn.execute(&format!("insert into client (name,client_ip,ssh_address,ssh_username,ssh_password,is_enable,created_at) values(?1,?2,?3,?4,?5,{},'{}')", 1, now),
          &[&name, &client_ip, &ssh_address, &ssh_username, &ssh_password]) {
             println!("{:?}", _e);
             Err("添加失败")?;
