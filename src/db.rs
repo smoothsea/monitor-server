@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:u32 = 5;
+    const CURRENT_VESION:i64 = 5;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -23,7 +23,7 @@ impl Db {
     }
 
     pub fn check_init(&self) -> Result<(), Box<dyn std::error::Error>> {
-        match self.conn.query_row::<u32, _, _>("select version from version order by id desc", NO_PARAMS, |row| {
+        match self.conn.query_row::<i64, _, _>("select version from version order by id desc", NO_PARAMS, |row| {
            row.get(0)
         }) {
             Ok(ret) => {
@@ -36,7 +36,7 @@ impl Db {
         Ok(())
     }
 
-    fn init_database(&self, database_version: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+    fn init_database(&self, database_version: Option<i64>) -> Result<(), Box<dyn std::error::Error>> {
         let mut sqls = HashMap::new();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let sql1 = format!("insert into version (version,created_at) values ({}, '{}')", Db::CURRENT_VESION, &now);
@@ -80,7 +80,9 @@ impl Db {
             "alter table client add ssh_password varchar(100)",
         ]);
 
-        for (key, value) in sqls {
+        for key in 1..sqls.len() {
+            let key = key as i64;
+            let value = sqls.get(&key).unwrap();
             match database_version {
                 Some(i) => {
                     if key > i {

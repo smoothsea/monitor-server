@@ -26,6 +26,7 @@ use rusqlite::{NO_PARAMS};
 
 use std::sync::{ Mutex };
 use std::net::TcpStream;
+use chrono::Duration;
 use ssh2::Session; 
 use std::io::prelude::*;
 
@@ -296,7 +297,9 @@ struct LoginParams {
 fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Json<Res>{
     match check_login(&params.username, &params.password) {
         Ok(id) => {
-            cookies.add_private(Cookie::new("user_id", id.to_string()));
+            let mut cookie = Cookie::build("user_id", id.to_string()).finish();
+            cookie.set_max_age(Duration::days(30));
+            cookies.add_private(cookie);
             return Res::ok(None, None);
         },
         Err(_e) => {
