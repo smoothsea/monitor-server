@@ -8,9 +8,13 @@ mod model;
 use db::{Db};
 use function::{Res, clean_data};
 use rocket_contrib::templates::Template;
-use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation,
-    add_client as add_client_operation,get_client,get_tasks,cancel_task as cancel_task_operation,get_memory_chart as get_memory_chart_m,MemoryChartLine,
-    get_cpu_chart as get_cpu_chart_m,CpuChartLine};
+use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, 
+    set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation, add_client as add_client_operation, get_client, 
+    get_tasks, cancel_task as cancel_task_operation, 
+    get_memory_chart as get_memory_chart_m, MemoryChartLine, get_cpu_chart as get_cpu_chart_m,CpuChartLine,
+    create_apply,
+    get_client_applys, ClientApplyRow,
+};
 
 use rocket::Outcome;
 use rocket::State;
@@ -55,6 +59,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
         let remote_ip = request.real_ip().unwrap_or(request.client_ip().unwrap()).to_string();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let machine_id = request.headers().get_one("authorization").unwrap_or("");
 
         let db:Db;
         if let Ok(d) = Db::get_db() {
@@ -72,6 +77,10 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
                     return Outcome::Success(Client(ret[0]));
                 },
                 Err(_e) => {
+                    // 
+                    if machine_id != "" {
+                        create_apply(machine_id, &remote_ip);
+                    }
                     Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
                 }
             }
@@ -410,6 +419,16 @@ fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res>
     } 
 }
 
+#[post("/client_applys")]
+fn client_applys(_admin: Admin) -> Json<Vec<ClientApplyRow>>
+{
+    if let Ok(ret) = get_client_applys() {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
 #[derive(FromForm, Debug)]
 struct AddClientParams {
     name: String,
@@ -565,6 +584,7 @@ fn main() {
      delete_client, edit_client, add_client, tasks,
      cancel_task,get_memory_chart,get_cpu_chart,
      connect_ssh_client,run_ssh_command,
+     client_applys,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)

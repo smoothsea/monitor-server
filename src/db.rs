@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:i64 = 5;
+    const CURRENT_VESION:i64 = 6;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -80,13 +80,20 @@ impl Db {
             "alter table client add ssh_password varchar(100)",
         ]);
 
-        for key in 1..sqls.len() {
+        sqls.insert(6, vec![
+            "drop table if exists network_stats_info",
+            "create table network_stats_info (id integer primary key autoincrement,if_name varchar(16),rx_bytes UNSIGNED BIG INT,tx_bytes UNSIGNED BIG INT,rx_packets UNSIGNED BIG INT,tx_packets UNSIGNED BIG INT,rx_errors UNSIGNED BIG INT,tx_errors UNSIGNED BIG INT,client_id integer not null,created_at datetime)",
+            "create table client_apply (id integer primary key autoincrement,machine_id varchar(32) not null,client_ip integer not null, status tinyint not null default 0,created_at datetime,updated_at datetime)",
+        ]);
+
+        for key in 1..=sqls.len() {
             let key = key as i64;
             let value = sqls.get(&key).unwrap();
             match database_version {
                 Some(i) => {
                     if key > i {
                         for sql in value {
+                            println!("{}", sql);
                             self.conn.execute(sql, NO_PARAMS)?;
                         }
                         self.conn.execute("update version set version=?1", &[key])?;

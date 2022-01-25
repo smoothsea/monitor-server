@@ -4,6 +4,7 @@ use rusqlite::{NO_PARAMS};
 use serde::{Serialize};
 use chrono::{Local, Duration};
 use core::ops::Sub;
+use core::ops::Add;
 
 use crate::db::Db;
 
@@ -406,3 +407,73 @@ pub fn cancel_task(task_id: u64) -> Result<(), Box<dyn Error>>
         Err("数据库连接错误")?
     }
 }
+
+const CLIENT_APPLY_STATUS_WAIT:u8 = 0;
+const CLIENT_APPLY_STATUS_PASS:u8 = 1;
+const CLIENT_APPLY_STATUS_REJECT:u8 = 2;
+const CLIENT_APPLY_EXPIRE_HOURS:i64 = 24;
+pub fn create_apply(machine_id: &str, client_ip: &str) -> Result<(), Box<dyn Error>>
+{
+    let duration = Duration::hours(CLIENT_APPLY_EXPIRE_HOURS);
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let apply_expire_date = Local::now().add(duration).format("%Y-%m-%d %H:%M:%S").to_string();
+    if let Ok(db) = Db::get_db() {
+        if let Err(e) = db.conn.query_row::<u32, _, _>(&format!("select id from client_apply where (machine_id=?1 and status in ({}, {})) or (machine_id=?1 and status={} and created_at<=?2 )", CLIENT_APPLY_STATUS_PASS, CLIENT_APPLY_STATUS_REJECT, CLIENT_APPLY_STATUS_WAIT), &[machine_id, &apply_expire_date], |row| {
+            row.get(0)
+        }) {
+            if let Err(_e) = db.conn.execute(&format!("insert into client_apply (machine_id, client_ip, status, created_at) values (?1, ?2, {}, ?3)", CLIENT_APPLY_STATUS_WAIT), &[machine_id, client_ip, &now]) {
+                Err("申请失败")?;
+            }
+        }
+    
+        Ok(())
+    } else {
+        Err("数据库连接错误")?
+    }
+}
+
+#[derive(Serialize,Debug)]
+pub struct ClientApplyRow 
+{
+    id: u32,
+    machine_id: String,
+    client_ip: String,
+    status: u8,
+    created_at: Option<String>,
+    updated_at: Option<String>,
+}
+
+pub fn get_client_applys() -> Result<Vec<ClientApplyRow>, Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        let sql = format!("select id,machine_id,client_ip,status,created_at,updated_at from client_apply order by created_at desc limit 10");
+        match db.conn.prepare(&sql) {
+            Ok(mut smtm) => {
+                if let Ok(mut ret) = smtm.query(NO_PARAMS) {
+                    let mut data:Vec<ClientApplyRow> = vec!();
+                    while let Some(row) = ret.next().unwrap() {
+                        let item = ClientApplyRow {
+                            id: row.get(0)?,
+                            machine_id: row.get(1)?,
+                            client_ip: row.get(2)?,
+                            status: row.get(3)?,
+                            created_at: row.get(4)?,
+                            updated_at: row.get(5)?,
+                        };
+                        data.push(item);
+                    }
+                    return Ok(data);
+                }
+            },
+            Err(_e) => {
+                println!("{:?}", _e);
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+

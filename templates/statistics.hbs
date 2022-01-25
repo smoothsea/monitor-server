@@ -1,5 +1,4 @@
 <html>
-
 <head>
     <title>Statistics</title>
     <style>
@@ -129,6 +128,8 @@
                 </el-table>
             </el-row>
             <el-row type="flex" justify="end">
+                <a style="cursor: pointer;font-size:15px" @click="clientApplyPop()" v-show="!list_loading">申请记录</a>
+                &nbsp;&nbsp;
                 <a style="cursor: pointer;font-size:15px" @click="addClientPop()" v-show="!list_loading">添加客户端</a>
             </el-row>
         </div>
@@ -207,6 +208,31 @@
             </el-table>
         </el-dialog>
 
+        <el-dialog title="申请记录" :visible.sync="client_apply_pop" @open="getClientApplyDate" width="80%">
+            <el-table :data="applyList" border style="max-height: 535px;" :row-class-name="applyList"
+                v-loading="client_apply_list_loading">
+                <el-table-column prop="machine_id" label="机器ID">
+                </el-table-column>
+                <el-table-column prop="client_ip" label="IP">
+                </el-table-column>
+                <el-table-column prop="status" label="状态">
+                </el-table-column>
+                <el-table-column prop="created_at" label="申请时间">
+                </el-table-column>
+                <el-table-column prop="updated_at" label="审批时间">
+                </el-table-column>
+                <el-table-column label="操作">
+                    <template slot-scope="scope">
+                        <template v-if="!scope.row.pulled_at && scope.row.is_valid">
+                            <el-button size="mini" type="warning"
+                                @click="cancel_task(scope.row.id, scope.row.client_id)">取消任务</el-button>
+                            </el-button>
+                        </template>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
         <div class="memory-chat submenu" v-if="activeIndex==2 && cpu_chart_show">
             <v-chart :options="cpu_chart" />
         </div>
@@ -242,15 +268,19 @@
                 ],
                 taskList: [
                 ],
+                applyList: [
+                ],
                 dataInter: null,
                 memoryChartInter: null,
                 cpuChartInter: null,
                 user: "",
                 edit_pop: false,
                 add_client_pop: false,
+                client_apply_pop: false,
                 task_pop: false,
                 task_list_loading: true,
                 list_loading: true,
+                client_apply_list_loading: true,
                 edit_form: {
                     id: "",
                     name: "",
@@ -444,6 +474,19 @@
                     }).then(function () {
                     });
                 },
+                getClientApplyDate: function () {
+                    var _this = this;
+                    axios.post("/client_applys").then(function (ret) {
+                        if (ret.status) {
+                            ret = ret.data;
+                            for (var i = 0, len = ret.length; i < len; i++) {
+                            }
+                            _this.applyList = ret;
+                        }
+                    }).then(function () {
+                        _this.client_apply_list_loading = false;
+                    });
+                },
                 formatSeconds: function (value) {
                     var theTime = parseInt(value);// 需要转换的时间秒 
                     var theTime1 = 0;// 分 
@@ -585,6 +628,9 @@
                 },
                 addClientPop: function () {
                     this.add_client_pop = true;
+                },
+                clientApplyPop: function () {
+                    this.client_apply_pop = true;
                 },
                 edit: function () {
                     var _this = this;
