@@ -12,8 +12,7 @@ use model::{check_login, get_client_statistics, StatisticsRow, TaskRow,
     set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation, add_client as add_client_operation, get_client, 
     get_tasks, cancel_task as cancel_task_operation, 
     get_memory_chart as get_memory_chart_m, MemoryChartLine, get_cpu_chart as get_cpu_chart_m,CpuChartLine,
-    create_apply,
-    get_client_applys, ClientApplyRow,
+    create_apply,pass_apply as pass_apply_operation,reject_apply as reject_apply_operation,get_client_applys, ClientApplyRow,
 };
 
 use rocket::Outcome;
@@ -79,7 +78,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
                 Err(_e) => {
                     // 
                     if machine_id != "" {
-                        create_apply(machine_id, &remote_ip);
+                        create_apply(machine_id, &remote_ip).unwrap_or(());
                     }
                     Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
                 }
@@ -220,8 +219,21 @@ struct StatusParams<'a> {
     memory_free: Option<u64>,
     memory_total: Option<u64>,
     system_version: Option<String>,
-    package_manager: Option<String>,
+    package_manager: Option<u32>,
+    network_stats: Vec<NetworkStat>,
 }
+
+#[derive(Deserialize, Debug)]
+struct NetworkStat {
+   pub if_name: String,
+   pub rx_bytes: u64, 
+   pub tx_bytes: u64, 
+   pub rx_packets: u64, 
+   pub tx_packets: u64, 
+   pub rx_errors: u64, 
+   pub tx_errors: u64, 
+}
+
 
 #[post("/set_status", data="<status>")]
 fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
@@ -235,21 +247,27 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
     }
 
     if let Err(_e) = db.conn.execute(&format!("insert into cpu_info (client_id,cpu_user,cpu_system,cpu_idle,cpu_nice,created_at) values ({}, {}, {}, {}, {}, '{}')", client_id,
-    status.cpu_user.unwrap_or_else(||{return 0.0}), status.cpu_system.unwrap_or_else(||{return 0.0}), status.cpu_idle.unwrap_or_else(||{return 0.0}), status.cpu_nice.unwrap_or_else(||{return 0.0}),
+    status.cpu_user.unwrap_or(0.0), status.cpu_system.unwrap_or(0.0), status.cpu_idle.unwrap_or(0.0), status.cpu_nice.unwrap_or(0.0),
     now),
          NO_PARAMS) {
         return Res::error(Some("插入失败".to_string()));
     }
 
     if let Err(_e) = db.conn.execute(&format!("insert into memory_info (client_id,memory_free,memory_total,created_at) values ({}, {}, {}, '{}')", client_id,
-    status.memory_free.unwrap_or_else(||{return 0}), status.memory_total.unwrap_or_else(||{return 0}),
+    status.memory_free.unwrap_or(0), status.memory_total.unwrap_or(0),
     now), 
     NO_PARAMS) {
         return Res::error(Some("插入失败".to_string()));
     }
 
-    let mut sql = format!("update client set uptime={},boot_time='{}'", status.uptime.unwrap_or_else(||{return 0}), 
-    &(status.boot_time.unwrap_or_else(||{return "";})));
+    for row in status.network_stats.iter() {
+        if let Err(_e) = db.conn.execute(&format!("insert into network_stats_info(client_id, if_name, rx_bytes, tx_bytes, rx_packets, tx_packets, rx_errors, tx_errors, created_at) values ({}, '{}', {}, {}, {}, {}, {}, {}, '{}')", client_id, row.if_name, row.rx_bytes, row.tx_bytes, row.rx_packets, row.tx_packets, row.rx_errors, row.tx_errors, now), 
+        NO_PARAMS) {
+            return Res::error(Some("插入失败".to_string()));
+        }
+    }
+
+    let mut sql = format!("update client set uptime={},boot_time='{}',cpu_temp={}", status.uptime.unwrap_or(0), &(status.boot_time.unwrap_or("")), status.cpu_temp.unwrap_or(0.0));
     if let Some(i) = status.system_version.clone() {
         sql = format!("{},system_version='{}'", sql, i);
     }
@@ -269,7 +287,7 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
 
 #[derive(Deserialize, Debug)]
 struct TaskParams {
-    client_id: u64,
+    client_id: u32,
     task_type: String,
 }
 
@@ -351,7 +369,7 @@ fn get_cpu_chart(_admin: Admin) -> Json<Option<Vec<CpuChartLine>>>{
 
 #[derive(FromForm, Debug)]
 struct OprateParams {
-    client_id: u64,
+    client_id: u32,
     operation: String,
 }
 
@@ -370,7 +388,7 @@ fn operate(_admin: Admin, params:Form<OprateParams>) -> Json<Res> {
 
 #[derive(FromForm, Debug)]
 struct DeleteClientParams {
-    client_id: u64,
+    client_id: u32,
 }
 
 #[post("/delete_client", data="<params>")]
@@ -388,7 +406,7 @@ fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res>
 
 #[derive(FromForm, Debug)]
 struct TasksParams {
-    client_id: u64,
+    client_id: u32,
 }
 
 #[post("/tasks", data="<params>")]
@@ -403,7 +421,7 @@ fn tasks(_admin: Admin, params:Form<TasksParams>) -> Json<Vec<TaskRow>>
 
 #[derive(FromForm, Debug)]
 struct CancelTaskParams {
-    task_id: u64,
+    task_id: u32,
 }
 
 #[post("/cancel_task", data="<params>")]
@@ -427,6 +445,37 @@ fn client_applys(_admin: Admin) -> Json<Vec<ClientApplyRow>>
     } else {
         Json(vec!())
     }
+}
+
+#[derive(FromForm, Debug)]
+struct ApplyOperationParam {
+    id: u32,
+}
+
+#[post("/pass_apply", data="<params>")]
+fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
+{
+    match pass_apply_operation(params.id) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+#[post("/reject_apply", data="<params>")]
+fn reject_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
+{
+    match reject_apply_operation(params.id) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
 }
 
 #[derive(FromForm, Debug)]
@@ -454,7 +503,7 @@ fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res>
 
 #[derive(FromForm, Debug)]
 struct EditClientParams {
-    client_id: u64,
+    client_id: u32,
     name: String,
     client_ip: String,
     is_enable: u32,  
@@ -479,7 +528,7 @@ fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res>
 
 #[derive(FromForm, Debug)]
 struct ConnectSshClientParams {
-    client_id: i64,
+    client_id: u32,
 }
 
 #[post("/connect_ssh_client", data="<params>")]
@@ -529,7 +578,7 @@ fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, sessio
 
 #[derive(FromForm, Debug)]
 struct SshCommandParams {
-    client_id: i64,
+    client_id: u32,
     command: String,
 }
 
@@ -548,17 +597,24 @@ fn run_ssh_command(_admin: Admin, params:Form<SshCommandParams>, session: State<
 
     if let Some(session) = &*s {
         let mut channel = session.channel_session().unwrap();
-        channel.exec(&params.command).unwrap();
+        channel.exec(&format!("/bin/bash -c \"{}\"", params.command)).unwrap();
         let mut s = String::new();
         channel.read_to_string(&mut s).unwrap();
-        return Res::ok(Some(s), None);
+
+        let mut channel = session.channel_session().unwrap();
+        channel.exec("pwd -P").unwrap();
+        let mut cwd = String::new();
+        channel.read_to_string(&mut cwd).unwrap();
+        
+        let separator = "--separator--";
+        return Res::ok(Some(format!("{}{}{}", s, separator, cwd)), None);
     } else {
         return Res::error(Some("查询错误".to_string()));
     }
 }
 
 struct SshSession {
-    client_id: Mutex<Option<i64>>,
+    client_id: Mutex<Option<u32>>,
     session: Mutex<Option<Session>>,
 }
 
@@ -584,7 +640,7 @@ fn main() {
      delete_client, edit_client, add_client, tasks,
      cancel_task,get_memory_chart,get_cpu_chart,
      connect_ssh_client,run_ssh_command,
-     client_applys,
+     client_applys,pass_apply,reject_apply,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)

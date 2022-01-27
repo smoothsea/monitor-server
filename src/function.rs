@@ -1,5 +1,5 @@
 use rocket_contrib::json::Json;
-use serde::{Serialize};
+use serde::Serialize;
 use rand::Rng;
 
 use crate::model::clean_data as clean;

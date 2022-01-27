@@ -21,6 +21,10 @@ pub fn clean_data(save_days: i64) -> Result<(), Box<dyn Error>> {
         if let Err(_e) = db.conn.execute("delete from memory_info where created_at<?1", &[&time]) {
             Err("清理失败")?;
         }
+
+        if let Err(_e) = db.conn.execute("delete from network_stats_info where created_at<?1", &[&time]) {
+            Err("清理失败")?;
+        }
     } else {
         Err("数据库连接错误")?;
     }    
@@ -28,11 +32,11 @@ pub fn clean_data(save_days: i64) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn check_login(username: &str, password: &str) -> Result<i64, Box<dyn Error>> 
+pub fn check_login(username: &str, password: &str) -> Result<u32, Box<dyn Error>> 
 {
     let pass = format!("{:x}", md5::compute(password));
     if let Ok(db) = Db::get_db() {
-        match db.conn.query_row::<i64,_,_>("select id from admin where username=?1 and password=?2", &[username, &pass], |row| {
+        match db.conn.query_row::<u32,_,_>("select id from admin where username=?1 and password=?2", &[username, &pass], |row| {
             row.get(0)
         }) {
             Ok(ret) => {
@@ -52,12 +56,12 @@ pub fn check_login(username: &str, password: &str) -> Result<i64, Box<dyn Error>
 #[derive(Serialize,Debug)]
 pub struct StatisticsRow
 {
-    id: f64,
+    id: u32,
     client_ip: Option<String>,
     name: Option<String>,
-    is_online: u32,
+    is_online: u8,
     last_online_time: Option<String>,
-    is_enable: u32,
+    is_enable: u8,
     created_at: Option<String>,
     uptime: Option<f64>,
     boot_time: Option<String>,
@@ -68,10 +72,11 @@ pub struct StatisticsRow
     memory_free: Option<f64>,
     memory_total: Option<f64>,
     system_version: Option<String>,
-    package_manager_update_count: Option<i32>,
+    package_manager_update_count: Option<u32>,
     ssh_address: Option<String>,
     ssh_username: Option<String>,
     ssh_password: Option<String>,
+    cpu_temp: Option<f64>,
 }
 
 pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
@@ -81,7 +86,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
         let sql = "select client.id,client.client_ip,client.name,client.is_online,client.last_online_time,client.is_enable,client.created_at,client.uptime,client.boot_time,
             cpu.cpu_user,cpu.cpu_system,cpu.cpu_nice,cpu.cpu_idle,memory.memory_free,memory.memory_total,
             client.system_version,client.package_manager_update_count,
-            ssh_address,ssh_username,ssh_password
+            ssh_address,ssh_username,ssh_password,cpu_temp
             from client
             left join (select * from cpu_info as info inner join (select max(id) as mid from cpu_info group by client_id) as least_info on info.id=least_info.mid) as cpu on cpu.client_id=client.id
             left join (select * from memory_info as info inner join (select max(id) as mid from memory_info group by client_id) as least_info on info.id=least_info.mid) as memory on memory.client_id=client.id
@@ -112,6 +117,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                             ssh_address: row.get(17)?,
                             ssh_username: row.get(18)?,
                             ssh_password: row.get(19)?,
+                            cpu_temp: row.get(20)?,
                         };
                         data.push(item);
                     }
@@ -147,8 +153,7 @@ pub fn get_memory_chart() -> Result<Vec<MemoryChartLine>, Box<dyn Error>>
         .to_string();
     if let Ok(db) = Db::get_db() {
         let sql = "select m.client_id,m.memory_free,m.memory_total,m.created_at,c.name from memory_info as m
-                    join client as c on m.client_id=c.id where m.created_at>?1
-        ";
+                    join client as c on m.client_id=c.id where m.created_at>?1";
         match db.conn.prepare(sql) {
             Ok(mut smtm) => {
                 if let Ok(mut ret) = smtm.query(&[&time]) {
@@ -200,8 +205,7 @@ pub fn get_cpu_chart() -> Result<Vec<CpuChartLine>, Box<dyn Error>>
         .to_string();
     if let Ok(db) = Db::get_db() {
         let sql = "select m.client_id,m.cpu_user,m.cpu_system,m.created_at,c.name from cpu_info as m
-                    join client as c on m.client_id=c.id where m.created_at>?1
-        ";
+                    join client as c on m.client_id=c.id where m.created_at>?1";
         match db.conn.prepare(sql) {
             Ok(mut smtm) => {
                 if let Ok(mut ret) = smtm.query(&[&time]) {
@@ -238,16 +242,16 @@ pub fn get_cpu_chart() -> Result<Vec<CpuChartLine>, Box<dyn Error>>
 #[derive(Serialize,Debug)]
 pub struct TaskRow
 {
-    id: f64,
-    is_valid: i8,
+    id: u32,
+    is_valid: u8,
     task_type: String,
     cancled_at: Option<String>,
     pulled_at: Option<String>,
     created_at: Option<String>,
-    client_id: f64,
+    client_id: u32,
 }
 
-pub fn get_tasks(client_id: u64) -> Result<Vec<TaskRow>, Box<dyn Error>>
+pub fn get_tasks(client_id: u32) -> Result<Vec<TaskRow>, Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         let sql = format!("select id,is_valid,task_type,cancled_at,pulled_at,created_at,client_id from task where client_id={} order by created_at desc limit 10", client_id);
@@ -282,12 +286,12 @@ pub fn get_tasks(client_id: u64) -> Result<Vec<TaskRow>, Box<dyn Error>>
     return Err("")?;
 }
 
-pub fn set_task(client_id: u64, task: String) -> Result<(), Box<dyn Error>>
+pub fn set_task(client_id: u32, task: String) -> Result<(), Box<dyn Error>>
 {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     if let Ok(db) = Db::get_db() {
-        if let Err(_e) = db.conn.query_row::<i32, _, _>(&format!("select id from client where id={} and is_enable=1 and is_online=1", client_id), NO_PARAMS, |row| {
-            row.get(0)
+        if let Err(_e) = db.conn.query_row::<(), _, _>(&format!("select id from client where id={} and is_enable=1 and is_online=1", client_id), NO_PARAMS, |_row| {
+            Ok(())
         }) {
             Err("客户不存在或者不在线")?;
         }
@@ -307,7 +311,7 @@ pub fn set_task(client_id: u64, task: String) -> Result<(), Box<dyn Error>>
     }
 }
 
-pub fn delete_client(client_id: u64) -> Result<(), Box<dyn Error>>
+pub fn delete_client(client_id: u32) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         if let Err(_e) = db.conn.execute(&format!("delete from client where id={}", client_id), NO_PARAMS) {
@@ -323,12 +327,12 @@ pub fn delete_client(client_id: u64) -> Result<(), Box<dyn Error>>
 #[derive(Serialize,Debug)]
 pub struct Client
 {
-    pub id: f64,
+    pub id: u32,
     pub ssh_address: Option<String>,
     pub ssh_username: Option<String>,
     pub ssh_password: Option<String>,
 }
-pub fn get_client(client_id: i64) -> Result<Client, Box<dyn Error>>
+pub fn get_client(client_id: u32) -> Result<Client, Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         if let Ok(ret) = db.conn.query_row(&format!("select id,ssh_address,ssh_username,ssh_password from client where id={}", client_id), NO_PARAMS, |row| {
@@ -349,11 +353,11 @@ pub fn get_client(client_id: i64) -> Result<Client, Box<dyn Error>>
     }
 }
 
-pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32, ssh_address: &str, ssh_username: &str, ssh_password: &str) -> Result<(), Box<dyn Error>>
+pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, ssh_address: &str, ssh_username: &str, ssh_password: &str) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
-        if let Ok(_d) = db.conn.query_row::<i32, _, _>(&format!("select id from client where id!={} and client_ip=?1", client_id), &[&client_ip], |row| {
-            row.get(0)
+        if let Ok(_d) = db.conn.query_row::<(), _, _>(&format!("select id from client where id!={} and client_ip=?1", client_id), &[&client_ip], |_row| {
+            Ok(())
         }) {
             Err("该用户ip已使用")?;
         }
@@ -371,8 +375,8 @@ pub fn edit_client(client_id: u64, name: &str, client_ip: &str, is_enable: u32, 
 pub fn add_client(name: &str, client_ip: &str, ssh_address: &str, ssh_username: &str, ssh_password: &str) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
-        if let Ok(_d) = db.conn.query_row::<i32, _, _>("select id from client where client_ip=?1", &[&client_ip], |row| {
-            row.get(0)
+        if let Ok(_d) = db.conn.query_row::<(), _, _>("select id from client where client_ip=?1", &[&client_ip], |_row| {
+            Ok(())
         }) {
             Err("该ip已使用")?;
         }
@@ -389,12 +393,12 @@ pub fn add_client(name: &str, client_ip: &str, ssh_address: &str, ssh_username: 
     }
 }
 
-pub fn cancel_task(task_id: u64) -> Result<(), Box<dyn Error>>
+pub fn cancel_task(task_id: u32) -> Result<(), Box<dyn Error>>
 {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     if let Ok(db) = Db::get_db() {
-        if let Err(_e) = db.conn.query_row::<i32, _, _>(&format!("select id from task where id={} and is_valid=1", task_id), NO_PARAMS, |row| {
-            row.get(0)
+        if let Err(_e) = db.conn.query_row::<(), _, _>(&format!("select id from task where id={} and is_valid=1", task_id), NO_PARAMS, |_row| {
+            Ok(())
         }) {
             Err("任务信息错误")?;
         }
@@ -418,8 +422,8 @@ pub fn create_apply(machine_id: &str, client_ip: &str) -> Result<(), Box<dyn Err
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let apply_expire_date = Local::now().add(duration).format("%Y-%m-%d %H:%M:%S").to_string();
     if let Ok(db) = Db::get_db() {
-        if let Err(e) = db.conn.query_row::<u32, _, _>(&format!("select id from client_apply where (machine_id=?1 and status in ({}, {})) or (machine_id=?1 and status={} and created_at<=?2 )", CLIENT_APPLY_STATUS_PASS, CLIENT_APPLY_STATUS_REJECT, CLIENT_APPLY_STATUS_WAIT), &[machine_id, &apply_expire_date], |row| {
-            row.get(0)
+        if let Err(_e) = db.conn.query_row::<(), _, _>(&format!("select id from client_apply where (machine_id=?1 and status in ({}, {})) or (machine_id=?1 and status={} and created_at<=?2 )", CLIENT_APPLY_STATUS_PASS, CLIENT_APPLY_STATUS_REJECT, CLIENT_APPLY_STATUS_WAIT), &[machine_id, &apply_expire_date], |_row| {
+            Ok(())
         }) {
             if let Err(_e) = db.conn.execute(&format!("insert into client_apply (machine_id, client_ip, status, created_at) values (?1, ?2, {}, ?3)", CLIENT_APPLY_STATUS_WAIT), &[machine_id, client_ip, &now]) {
                 Err("申请失败")?;
@@ -477,3 +481,52 @@ pub fn get_client_applys() -> Result<Vec<ClientApplyRow>, Box<dyn Error>>
     return Err("")?;
 }
 
+pub fn pass_apply(id: u32) -> Result<(), Box<dyn Error>>
+{
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let mut apply = None;
+    if let Ok(db) = Db::get_db() {
+        if let Ok(row) = db.conn.query_row::<ClientApplyRow, _, _>(&format!("select id,machine_id,client_ip,status from client_apply where id={} and status={}", id, CLIENT_APPLY_STATUS_WAIT), NO_PARAMS, |row| {
+            Ok(ClientApplyRow {
+                id: row.get(0).unwrap_or(id),
+                machine_id: row.get(1)?,
+                client_ip: row.get(2)?,
+                status: row.get(3).unwrap_or(1),
+                created_at: None,
+                updated_at: None,
+            })
+        }) {
+            apply = Some(row);
+        } else {
+            Err("申请信息错误")?;
+        }
+    
+        if let Some(a) = apply {
+            add_client(&a.client_ip, &a.client_ip, &a.client_ip, "", "")?;
+           
+            if let Err(_e) = db.conn.execute(&format!("update client_apply set status={},updated_at=?1 where id={}", CLIENT_APPLY_STATUS_PASS, id), &[&now]) {
+                Err("修改失败")?;
+            }
+        }
+        Ok(())
+    } else {
+        Err("数据库连接错误")?
+    }
+}
+
+pub fn reject_apply(id: u32) -> Result<(), Box<dyn Error>>
+{
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    if let Ok(db) = Db::get_db() {
+        if let Err(_e) = db.conn.query_row::<(), _, _>(&format!("select id from client_apply where id={} and status={}", id, CLIENT_APPLY_STATUS_WAIT), NO_PARAMS, |_row| {Ok(())}) {
+            Err("申请信息错误")?;
+        }
+    
+        if let Err(_e) = db.conn.execute(&format!("update client_apply set status={},updated_at=?1 where id={}", CLIENT_APPLY_STATUS_REJECT, id), &[&now]) {
+            Err("操作失败")?;
+        }
+        Ok(())
+    } else {
+        Err("数据库连接错误")?
+    }
+}

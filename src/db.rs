@@ -37,6 +37,7 @@ impl Db {
     }
 
     fn init_database(&self, database_version: Option<i64>) -> Result<(), Box<dyn std::error::Error>> {
+        // Todo add transaction
         let mut sqls = HashMap::new();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let sql1 = format!("insert into version (version,created_at) values ({}, '{}')", Db::CURRENT_VESION, &now);
@@ -84,6 +85,7 @@ impl Db {
             "drop table if exists network_stats_info",
             "create table network_stats_info (id integer primary key autoincrement,if_name varchar(16),rx_bytes UNSIGNED BIG INT,tx_bytes UNSIGNED BIG INT,rx_packets UNSIGNED BIG INT,tx_packets UNSIGNED BIG INT,rx_errors UNSIGNED BIG INT,tx_errors UNSIGNED BIG INT,client_id integer not null,created_at datetime)",
             "create table client_apply (id integer primary key autoincrement,machine_id varchar(32) not null,client_ip integer not null, status tinyint not null default 0,created_at datetime,updated_at datetime)",
+            "alter table client add cpu_temp real",
         ]);
 
         for key in 1..=sqls.len() {

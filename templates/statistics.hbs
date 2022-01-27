@@ -43,11 +43,20 @@
             text-decoration: none;
         }
 
-        .offline {
+        .el-table .offline {
             color: gray;
         }
 
-        .online {}
+        .el-table .online {
+          }
+
+        .el-table .apply-reject {
+            color: gray;
+          }
+
+        .el-table .apply-pass {
+            color: #71df65;
+          }
 
         .dialog-footer {
             display: none;
@@ -59,6 +68,121 @@
             padding-left: 50px;
             height: 350px;
         }
+
+        #shell *::-webkit-scrollbar-track {
+            border-radius: 8px;
+            background-color: #353535;
+        }
+
+        #shell *::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        #shell *::-webkit-scrollbar-thumb {
+            border-radius: 8px;
+            -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,.3);
+            background-color: #bcbcbc;
+        }
+
+        #shell {
+            background: #222;
+            max-width: 1200px;
+            margin: 50px auto 0 auto;
+            box-shadow: 0 0 5px rgba(0, 0, 0, .3);
+            font-size: 10pt;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            color: white;
+        }
+
+        #shell-content {
+            height: 500px;
+            overflow: auto;
+            padding: 5px;
+            white-space: pre-wrap;
+            flex-grow: 1;
+        }
+
+        #shell-logo {
+            font-weight: bold;
+            color: #FF4180;
+            text-align: center;
+        }
+
+        @media (max-width: 991px) {
+            #shell-logo {
+                font-size: 6px;
+                margin: -25px 0;
+            }
+
+            html, body, #shell {
+                height: 100%;
+                width: 100%;
+                max-width: none;
+            }
+
+            #shell {
+                margin-top: 0;
+            }
+        }
+
+        @media (max-width: 767px) {
+            #shell-input {
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 320px) {
+            #shell-logo {
+                font-size: 5px;
+            }
+        }
+
+        .shell-prompt {
+            font-weight: bold;
+            color: #75DF0B;
+        }
+
+        .shell-prompt > span {
+            color: #1BC9E7;
+        }
+
+        #shell-input {
+            display: flex;
+            box-shadow: 0 -1px 0 rgba(0, 0, 0, .3);
+            border-top: rgba(255, 255, 255, .05) solid 1px;
+        }
+
+        #shell-input > label {
+            flex-grow: 0;
+            display: block;
+            padding: 0 5px;
+            height: 30px;
+            line-height: 30px;
+        }
+
+        #shell-input #shell-cmd {
+            height: 30px;
+            line-height: 30px;
+            border: none;
+            background: transparent;
+            color: #eee;
+            font-family: monospace;
+            font-size: 10pt;
+            width: 100%;
+            align-self: center;
+        }
+
+        #shell-input div {
+            flex-grow: 1;
+            align-items: stretch;
+        }
+
+        #shell-input input {
+            outline: none;
+        } 
         [v-cloak] {
             display:none;
         }
@@ -70,7 +194,6 @@
     <script src="/public/elementui.js"></script>
     <script src="/public/echats.js"></script>
     <script src="/public/vue-echats.js"></script>
-    <script src="/public/term.js"></script>
 </head>
 <body>
     <div id="app" v-clock>
@@ -84,7 +207,8 @@
 
         <div v-show="activeIndex==1" class="submenu">
             <el-row type="flex" justify="center">
-                <el-table :data="list" :row-class-name="tableRowClassName" v-loading="list_loading">
+                <el-table :data="list" :row-class-name="tableRowClassName" v-loading="list_loading"
+                empty-text=" ">
                     <el-table-column prop="client_ip" header-align="left" fixed label="客户端ip" width="120px">
                     </el-table-column>
                     <el-table-column prop="name" header-align="left" fixed label="名称" width="200px">
@@ -99,6 +223,8 @@
                                 @click="run(3, scope.row.id)" v-if="scope.row.package_manager">更新</a>
                         </template>
                     </el-table-column>
+                    <el-table-column prop="cpu_temp" header-align="left" label="CPU温度" width="220px">
+                    </el-table-column>
                     <el-table-column prop="last_online_time" header-align="left" label="上次同步时间" width="220px">
                     </el-table-column>
                     <el-table-column prop="uptime" header-align="left" label="开机时长" width="240px">
@@ -111,7 +237,7 @@
                     </el-table-column>
                     <el-table-column label="管理" header-align="left" width="230px">
                         <template slot-scope="scope">
-                            <el-button size="mini" @click="task(scope.row.id)">任务</el-button>
+                            <el-button size="mini" @click="tasks(scope.row.id)">任务</el-button>
                             <el-button size="mini" @click="editPop(scope.row.id)">编辑</el-button>
                             <el-button size="mini" type="danger" @click="del(scope.row.id)">删除</el-button>
                         </template>
@@ -121,15 +247,17 @@
                             <template v-if="scope.row.is_online == 1">
                                 <el-button size="mini" type="warning" @click="run(2, scope.row.id)">重启</el-button>
                                 <el-button size="mini" type="danger" @click="run(1, scope.row.id)">关机</el-button>
-                                <el-button size="mini" type="primary" @click="connectTerminal(scope.row.id, scope.row.ssh_address)">Terminal</el-button>
                             </template>
+                            <el-button size="mini" type="primary" @click="connectTerminal(scope.row.id, scope.row.ssh_address)">Terminal</el-button>
                         </template>
                     </el-table-column>
                 </el-table>
             </el-row>
             <el-row type="flex" justify="end">
-                <a style="cursor: pointer;font-size:15px" @click="clientApplyPop()" v-show="!list_loading">申请记录</a>
-                &nbsp;&nbsp;
+                <el-badge :value="applyCount" class="item">
+                    <a style="cursor: pointer;font-size:15px" @click="clientApplyPop()" v-show="!list_loading">申请记录</a>
+                </el-badge>
+                &nbsp;&nbsp;&nbsp;&nbsp;
                 <a style="cursor: pointer;font-size:15px" @click="addClientPop()" v-show="!list_loading">添加客户端</a>
             </el-row>
         </div>
@@ -200,7 +328,7 @@
                     <template slot-scope="scope">
                         <template v-if="!scope.row.pulled_at && scope.row.is_valid">
                             <el-button size="mini" type="warning"
-                                @click="cancel_task(scope.row.id, scope.row.client_id)">取消任务</el-button>
+                                @click="cancelTask(scope.row.id, scope.row.client_id)">取消任务</el-button>
                             </el-button>
                         </template>
                     </template>
@@ -208,9 +336,9 @@
             </el-table>
         </el-dialog>
 
-        <el-dialog title="申请记录" :visible.sync="client_apply_pop" @open="getClientApplyDate" width="80%">
-            <el-table :data="applyList" border style="max-height: 535px;" :row-class-name="applyList"
-                v-loading="client_apply_list_loading">
+        <el-dialog title="申请记录" :visible.sync="client_apply_pop" @open="getClientApplyData" width="80%">
+            <el-table :data="applyList" border style="max-height: 535px;"
+                v-loading="client_apply_list_loading" :row-class-name="applyTableRowClassName">
                 <el-table-column prop="machine_id" label="机器ID">
                 </el-table-column>
                 <el-table-column prop="client_ip" label="IP">
@@ -223,11 +351,12 @@
                 </el-table-column>
                 <el-table-column label="操作">
                     <template slot-scope="scope">
-                        <template v-if="!scope.row.pulled_at && scope.row.is_valid">
-                            <el-button size="mini" type="warning"
-                                @click="cancel_task(scope.row.id, scope.row.client_id)">取消任务</el-button>
-                            </el-button>
-                        </template>
+                        <el-button size="mini" type="success"
+                            @click="passApply(scope.row.id, scope.row.client_id)" :disabled="scope.row.status != APPLY_WAIT_TXT">同意</el-button>
+                        </el-button>
+                        <el-button size="mini" type="danger"
+                            @click="rejectApply(scope.row.id, scope.row.client_id)" :disabled="scope.row.status != APPLY_WAIT_TXT">拒绝</el-button>
+                        </el-button>
                     </template>
                 </el-table-column>
             </el-table>
@@ -241,7 +370,17 @@
             <v-chart :options="memory_chart" />
         </div>
 
-        <div v-show="activeIndex==4" id="terminal" style="background-color: #555">
+        <div v-show="activeIndex==4" id="terminal" @click="focusTerminal(event)">
+           <div id="shell">
+              <pre id="shell-content" v-html="terminal_content">
+              </pre>
+              <div id="shell-input">
+                  <label for="shell-cmd" id="shell-prompt" class="shell-prompt" v-html="terminal_prompt"></label>
+                  <div>
+                      <input id="shell-cmd" name="cmd" v-model.trim="terminal_command" @keydown="onShellCmdKeyDown(event)" autocomplete="off" :disabled="!terminal_command_enable"/>
+                  </div>
+              </div>
+          </div>
         </div>
     </div>
     <style>
@@ -257,30 +396,22 @@
 
     <script>
         Vue.component('v-chart', VueECharts)
+        var APPLY_REJECT_TXT = "已拒绝";
+        var APPLY_PASS_TXT = "已通过";
+        var APPLY_WAIT_TXT = "待审核";
         var app = new Vue({
             el: '#app',
             data: {
-                teriminalId: 0,
-                terminal: null,
+                tab_show: false,
                 activeIndex: 1,
-                sort: ["is_online desc", "id asc"],
-                list: [
-                ],
-                taskList: [
-                ],
-                applyList: [
-                ],
-                dataInter: null,
-                memoryChartInter: null,
-                cpuChartInter: null,
+                intervals: [],
+                // client
                 user: "",
+                list: [],
                 edit_pop: false,
-                add_client_pop: false,
-                client_apply_pop: false,
-                task_pop: false,
-                task_list_loading: true,
                 list_loading: true,
-                client_apply_list_loading: true,
+                add_client_pop: false,
+                sort: ["is_online desc", "id asc"],
                 edit_form: {
                     id: "",
                     name: "",
@@ -297,24 +428,37 @@
                     ssh_username: "",
                     ssh_password: "",
                 },
-                memory_chart: {
-                },
+                // memory
+                memory_chart: {},
                 memory_chart_show: false,
-                cpu_chart: {
-                },
+                // cpu
+                cpu_chart: {},
                 cpu_chart_show: false,
-                tab_show: false,
+                // task
+                task_pop: false,
+                task_list_loading: true,
+                taskList: [
+                ],
+                // client apply
+                applyCount: null,
+                client_apply_pop: false,
+                client_apply_list_loading: true,
+                applyList: [
+                ],
+                // terminal
+                teriminalId: 0,
+                terminal: null,
+                terminal_command: '',
+                terminal_command_enable: false,
+                terminal_content: "<span style='color:red'>Please connect to the server first</span>",
+                terminal_prompt: "",
+                history_position: 0,
+                history_commands: [],
             },
             methods: {
+                // client
                 tableRowClassName: function ({ row, rowIndex }) {
                     if (row.is_online == 1) {
-                        return "online";
-                    } else {
-                        return "offline";
-                    }
-                },
-                taskRowClassName: function ({ row, rowIndex }) {
-                    if (!row.pulled_at && row.is_valid) {
                         return "online";
                     } else {
                         return "offline";
@@ -344,6 +488,7 @@
                             for (var i = 0, len = ret.length; i < len; i++) {
                                 var is_online = ret[i]["is_online"];
                                 ret[i]["uptime"] = is_online ? _this.formatSeconds(ret[i]["uptime"]) : "";
+                                ret[i]["cpu_temp"] = is_online ? ret[i]["cpu_temp"] + "℃" : "";
                                 ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "是" : "否";
                                 ret[i]["cpu"] = is_online ? _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4), 100) + "%" : "";
                                 ret[i]["memory"] = is_online ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
@@ -355,12 +500,155 @@
                         _this.list_loading = false;
                     });
                 },
-                getLastDate: function (date) {
-                    let timestamp = (new Date(date)).getTime() / 1000;
-                    timestamp = timestamp - timestamp % 5;
-                    let newDate = new Date(timestamp * 1000);
-                    return newDate.getMinutes().toString().padStart(2, "0") + ":" + newDate.getSeconds().toString().padStart(2, "0");
+                del: function (id) {
+                    var _this = this;
+                    this.$confirm('此操作将永久删除该主机, 是否继续?', '提示', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        axios.post("/delete_client", "client_id=" + id)
+                            .then(function (ret) {
+                                if (ret) {
+                                    ret = ret.data;
+                                    if (ret.ok) {
+                                        _this.getData();
+                                    } else {
+                                        _this.$message({
+                                            type: 'error',
+                                            message: ret.message
+                                        });
+                                    }
+                                }
+                            })
+
+                    });
                 },
+                edit: function () {
+                    var _this = this;
+                    this.edit_form.client_id = this.edit_form.id;
+
+                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_address", "ssh_username", "ssh_password"]))
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.getData();
+                                    _this.edit_pop = false;
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
+                addClient: function () {
+                    var _this = this;
+                    axios.post("/add_client", this.toFormData(this.add_client_form, ["name", "client_ip", "ssh_address", "ssh_username", "ssh_password"]))
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.getData();
+                                    _this.add_client_pop = false;
+                                    _this.add_client_form = {
+                                        name: "",
+                                        client_ip: "",
+                                    };
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
+                editPop: function (id) {
+                    for (let i = 0, len = this.list.length; i < len; i++) {
+                        if (this.list[i]["id"] == id) {
+                            this.edit_form = this.list[i];
+                        }
+                    }
+                    this.edit_pop = true;
+                },
+                addClientPop: function () {
+                    this.add_client_pop = true;
+                },
+                run: function (type, id) {
+                    var _this = this
+                    var operation
+                    switch (type) {
+                        case 1:
+                            operation = "shutdown"
+                            break
+                        case 2:
+                            operation = "reboot"
+                            break
+                        case 3:
+                            operation = "update"
+                            break
+                    }
+                    this.$confirm('是否继续?', '提示', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        axios.post("/operate", "client_id=" + id + "&operation=" + operation)
+                            .then(function (ret) {
+                                if (ret) {
+                                    ret = ret.data;
+                                    if (!ret.ok) {
+                                        _this.$message({
+                                            type: 'error',
+                                            message: ret.message
+                                        });
+                                    }
+                                }
+                            })
+                    });
+                },
+                // task
+                taskRowClassName: function ({ row, rowIndex }) {
+                    if (!row.pulled_at && row.is_valid) {
+                        return "online";
+                    } else {
+                        return "offline";
+                    }
+                },
+                tasks: function (id) {
+                    var _this = this;
+                    _this.task_pop = true;
+                    axios.post("/tasks", "client_id=" + id).then(function (ret) {
+                        if (ret.status) {
+                            ret = ret.data;
+                            _this.taskList = ret;
+                        }
+                    }).then(function () {
+                        _this.task_list_loading = false;
+                    });
+
+                },
+                cancelTask: function (id, client_id) {
+                    var _this = this;
+                    axios.post("/cancel_task", "task_id=" + id)
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.tasks(client_id);
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
+                // memory
                 getMemoryChart: function () {
                     var _this = this;
                     axios.post("/get_memory_chart", {}).then(function (ret) {
@@ -417,6 +705,7 @@
                     }).then(function () {
                     });
                 },
+                // cpu
                 getCpuChart: function () {
                     var _this = this;
                     axios.post("/get_cpu_chart", {}).then(function (ret) {
@@ -474,18 +763,253 @@
                     }).then(function () {
                     });
                 },
-                getClientApplyDate: function () {
+                // client apply
+                getClientApplyData: function () {
                     var _this = this;
-                    axios.post("/client_applys").then(function (ret) {
+                    return axios.post("/client_applys").then(function (ret) {
                         if (ret.status) {
                             ret = ret.data;
                             for (var i = 0, len = ret.length; i < len; i++) {
+                                ret[i]["status"] = ret[i]["status"] == 2 ? APPLY_REJECT_TXT : (ret[i]["status"] == 1 ? APPLY_PASS_TXT : APPLY_WAIT_TXT);  
                             }
                             _this.applyList = ret;
                         }
                     }).then(function () {
                         _this.client_apply_list_loading = false;
                     });
+                },
+                getClientApplyCount: function () {
+                    var _this = this;
+                    return axios.post("/client_applys").then(function (ret) {
+                        if (ret.status) {
+                            ret = ret.data;
+                            var count = 0;
+                            for (var i = 0, len = ret.length; i < len; i++) {
+                              if (ret[i]["status"] == 0) {
+                                  count++;
+                                }
+                            }
+                            _this.applyCount = count > 0 ? count : null;
+                        }
+                    });
+                  },
+                passApply: function (id) {
+                    var _this = this;
+                    axios.post("/pass_apply", "id=" + id)
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.getClientApplyData();
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
+                rejectApply: function (id) {
+                    var _this = this;
+                    axios.post("/reject_apply", "id=" + id)
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.getClientApplyData();
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
+                clientApplyPop: function () {
+                    this.client_apply_pop = true;
+                },
+                applyTableRowClassName: function({row, rowIndex}) {
+                    switch(row.status) {
+                        case APPLY_PASS_TXT:
+                          return "apply-pass";
+                        case APPLY_REJECT_TXT:
+                          return "apply-reject";
+                        case APPLY_WAIT_TXT:
+                        default:
+                          return "";
+                      }
+                },
+                // terminal
+                connectTerminal: function (id, address) {
+                    let _this = this;
+                    if (this.teriminalId != id) {
+                        axios.post("/connect_ssh_client", "client_id=" + id)
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.activeIndex = 4;
+                                    _this.teriminalId = id;
+                                    _this.terminal_content = address + " connect ok\r\n";
+                                    _this.terminal_command_enable = true;
+                                    _this.terminal_command = "";
+                                    setTimeout(function () {
+                                        document.getElementById("shell-cmd").focus();
+                                      });
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    })
+                                }
+                            }
+                        })
+                    } else {
+                      _this.activeIndex = 4;
+                      document.getElementById("shell-cmd").focus();
+                    }
+                },
+                runTerminalCommand: function (command) {
+                    var _this = this;
+                    return axios.post("/run_ssh_command", "client_id=" + Number(this.teriminalId) + "&command=" + String(command))
+                    .then(function (ret) {
+                        if (ret) {
+                            ret = ret.data;
+                            if (ret.ok) {
+                                var separator = "--separator--";
+                                var message = ret.message.split(separator);
+                                _this.terminal_content += _this.escapeHtml(message[0]);
+                                setTimeout(function () {
+                                    document.getElementById("shell-content").scrollTop = document.getElementById("shell-content").scrollHeight; 
+                                  }, 1);
+                                _this.updateCwd(message[1]);
+                            } else {
+                                _this.$message({
+                                    type: 'error',
+                                    message: ret.message
+                                });
+                            }
+                        }
+                        return  new Promise(function(resolve, reject) {
+                            resolve(ret);
+                        })
+                    })
+                },
+                onShellCmdKeyDown: function (event) {
+                    switch (event.key) {
+                        case "Enter":
+                            this.featureShell(this.terminal_command);
+                            this.insertHistory(this.terminal_command);
+                            this.terminal_command = "";
+                            break;
+                        case "ArrowUp": 
+                            if (this.history_position > 0) {
+                                this.history_position--;
+                                this.terminal_command = this.history_commands[this.history_position];
+                            }
+                            break;
+                        case "ArrowDown":
+                            if (this.history_position > this.history_commands.length) {
+                                return "";
+                            }
+                            this.history_position++;
+                            if (this.history_position == this.history_commands.length) {
+                                this.terminal_command = "";    
+                            } else {
+                                this.terminal_command = this.history_commands[this.history_position];    
+                            }
+                            break;
+                        case "Tab":
+                            event.preventDefault();
+                            this.featureHint();
+                            break;
+                    }
+                },
+                insertHistory: function (command) {
+                    this.history_commands.push(command);
+                    this.history_position = this.history_commands.length;
+                },
+                insertCommand: function (command) {
+                    this.terminal_content += '\n\n'+
+                                             '<span class="shell-prompt">' + this.genPrompt(this.cwd) + '</span> ' + 
+                                             this.escapeHtml(command) + 
+                                             '\n';
+                },
+                featureShell: function (command) {
+                    this.insertCommand(command);
+                    if (/^\s*clear\s*$/.test(command)) {
+                        this.terminal_content = "";
+                    } else {
+                        this.runTerminalCommand(command);
+                    }
+                },
+                featureHint: function () {
+                    if (this.terminal_command == "") {
+                        return;
+                      }
+
+                    var _this = this;
+                    var commandParams = this.terminal_command.split(" ");
+                    var realCommand;
+                    if (commandParams.length == 1) {
+                        realCommand = "compgen -c " + commandParams[0];
+                    } else {
+                        realCommand = "compgen -f " + commandParams[commandParams.length - 1];
+                    }
+                    this.insertCommand(this.terminal_command);
+                    this.runTerminalCommand(realCommand).then(function (ret) {
+                      if (ret && ret.ok == 1) {
+                          var separator = "--separator--";
+                          var message = ret.message.split(separator);
+                          var finds = message[0].split("\n");
+                          if (finds.length == 2) {
+                            commandParams[commandParams.length-1] = finds[0];
+                             _this.terminal_command = commandParams.join(" ");
+                            }
+                        }
+                    });
+                },
+                updateCwd: function (cwd) {
+                    if (cwd) {
+                        this.cwd = cwd;
+                        this.updatePrompt();
+                        return;
+                    } 
+                    this.updatePrompt();
+                },
+                updatePrompt: function () {
+                    this.terminal_prompt = this.genPrompt(this.cwd);
+                },
+                genPrompt: function (cwd) {
+                    cwd = cwd || "~";
+                    var shortCwd = cwd;
+                    if (cwd.split("/").length > 3) {
+                        var splittedCwd = cwd.split("/");
+                        shortCwd = "…/" + splittedCwd[splittedCwd.length-2] + "/" + splittedCwd[splittedCwd.length-1];
+                    }
+                    return "shell:<span title=\"" + cwd + "\">" + shortCwd + "</span>#";
+                },
+                focusTerminal: function (event) {
+                    event = event || window.event;
+                    var selection = window.getSelection();
+                    var target = event.target || event.srcElement;
+
+                    if (target.tagName === "SELECT") {
+                        return;
+                    }
+
+                    if (!selection.toString()) {
+                        document.getElementById("shell-cmd").focus();
+                    }
+                },
+                // common
+                escapeHtml: function (string) {
+                    return string
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;");
                 },
                 formatSeconds: function (value) {
                     var theTime = parseInt(value);// 需要转换的时间秒 
@@ -519,6 +1043,12 @@
                         result = "" + parseInt(theTime3) + "天" + result;
                     }
                     return result;
+                },
+                getLastDate: function (date) {
+                    let timestamp = (new Date(date)).getTime() / 1000;
+                    timestamp = timestamp - timestamp % 5;
+                    let newDate = new Date(timestamp * 1000);
+                    return newDate.getMinutes().toString().padStart(2, "0") + ":" + newDate.getSeconds().toString().padStart(2, "0");
                 },
                 getfilesize: function (size) {
                     if (!size)
@@ -557,152 +1087,9 @@
                     location.href = "/login";
                 },
                 clearUserInterval: function () {
-                    clearInterval(this.dataInter);
-                    clearInterval(this.memoryChartInter);
-                    clearInterval(this.cpuChartInter);
-                },
-                run: function (type, id) {
-                    var _this = this
-                    var operation
-                    switch (type) {
-                        case 1:
-                            operation = "shutdown"
-                            break
-                        case 2:
-                            operation = "reboot"
-                            break
-                        case 3:
-                            operation = "update"
-                            break
-                    }
-                    this.$confirm('是否继续?', '提示', {
-                        confirmButtonText: '确定',
-                        cancelButtonText: '取消',
-                        type: 'warning'
-                    }).then(() => {
-                        axios.post("/operate", "client_id=" + id + "&operation=" + operation)
-                            .then(function (ret) {
-                                if (ret) {
-                                    ret = ret.data;
-                                    if (!ret.ok) {
-                                        _this.$message({
-                                            type: 'error',
-                                            message: ret.message
-                                        });
-                                    }
-                                }
-                            })
-                    });
-                },
-                del: function (id) {
-                    var _this = this;
-                    this.$confirm('此操作将永久删除该主机, 是否继续?', '提示', {
-                        confirmButtonText: '确定',
-                        cancelButtonText: '取消',
-                        type: 'warning'
-                    }).then(() => {
-                        axios.post("/delete_client", "client_id=" + id)
-                            .then(function (ret) {
-                                if (ret) {
-                                    ret = ret.data;
-                                    if (ret.ok) {
-                                        _this.getData();
-                                    } else {
-                                        _this.$message({
-                                            type: 'error',
-                                            message: ret.message
-                                        });
-                                    }
-                                }
-                            })
-
-                    });
-                },
-                editPop: function (id) {
-                    for (let i = 0, len = this.list.length; i < len; i++) {
-                        if (this.list[i]["id"] == id) {
-                            this.edit_form = this.list[i];
-                        }
-                    }
-                    this.edit_pop = true;
-                },
-                addClientPop: function () {
-                    this.add_client_pop = true;
-                },
-                clientApplyPop: function () {
-                    this.client_apply_pop = true;
-                },
-                edit: function () {
-                    var _this = this;
-                    this.edit_form.client_id = this.edit_form.id;
-
-                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_address", "ssh_username", "ssh_password"]))
-                        .then(function (ret) {
-                            if (ret) {
-                                ret = ret.data;
-                                if (ret.ok) {
-                                    _this.getData();
-                                    _this.edit_pop = false;
-                                } else {
-                                    _this.$message({
-                                        type: 'error',
-                                        message: ret.message
-                                    });
-                                }
-                            }
-                        })
-                },
-                addClient: function () {
-                    var _this = this;
-                    axios.post("/add_client", this.toFormData(this.add_client_form, ["name", "client_ip", "ssh_address", "ssh_username", "ssh_password"]))
-                        .then(function (ret) {
-                            if (ret) {
-                                ret = ret.data;
-                                if (ret.ok) {
-                                    _this.getData();
-                                    _this.add_client_pop = false;
-                                    _this.add_client_form = {
-                                        name: "",
-                                        client_ip: "",
-                                    };
-                                } else {
-                                    _this.$message({
-                                        type: 'error',
-                                        message: ret.message
-                                    });
-                                }
-                            }
-                        })
-                },
-                task: function (id) {
-                    var _this = this;
-                    _this.task_pop = true;
-                    axios.post("/tasks", "client_id=" + id).then(function (ret) {
-                        if (ret.status) {
-                            ret = ret.data;
-                            _this.taskList = ret;
-                        }
-                    }).then(function () {
-                        _this.task_list_loading = false;
-                    });
-
-                },
-                cancel_task: function (id, client_id) {
-                    var _this = this;
-                    axios.post("/cancel_task", "task_id=" + id)
-                        .then(function (ret) {
-                            if (ret) {
-                                ret = ret.data;
-                                if (ret.ok) {
-                                    _this.task(client_id);
-                                } else {
-                                    _this.$message({
-                                        type: 'error',
-                                        message: ret.message
-                                    });
-                                }
-                            }
-                        })
+                    for (var i=0,len=this.intervals.length; i<len; i++) {
+                        clearInterval(this.intervals[i]);
+                      }
                 },
                 toFormData: function (o, fields) {
                     var isLimitField = fields.length > 0 ? true : false;
@@ -720,74 +1107,21 @@
                 },
                 handleSelect: function (key, keyPath) {
                     this.activeIndex = key;
+                    this.initTabInterval();
                 },
-                initTerminal: function () {
-                    var _this = this;
-                    this.terminal = new Terminal({
-                        cols: 80,
-                        rows: 40,
-                        screenKeys: true
-                    });
-
-                    var command = "";
-                    this.terminal.on('data', function (data) {
-                        if (data != "\r") {
-                            command += data;
-                        } else {
-                            data = "\r\n";
-                            if (command != "") {
-                                _this.runTerminalCommand(_this.teriminalId, command).finally(function () {
-                                    command = "";
-                                });
-                            }
-
-                        }
-                        _this.terminal.write(data)
-                    });
-
-                    this.terminal.open(document.getElementById("terminal"));
-                },
-                connectTerminal: function (id, address) {
-                    let _this = this;
-                    if (this.teriminalId != id) {
-                        axios.post("/connect_ssh_client", "client_id=" + id)
-                        .then(function (ret) {
-                            if (ret) {
-                                ret = ret.data;
-                                if (ret.ok) {
-                                    _this.activeIndex = 4;
-                                    _this.teriminalId = id;
-                                    _this.terminal.write(address + " connect ok\r\n");
-                                } else {
-                                    _this.$message({
-                                        type: 'error',
-                                        message: ret.message
-                                    })
-                                }
-                            }
-                        })
-                    } else {
-                        _this.terminal.write("Connect ok\r\n");
+                initTabInterval: function () {
+                    var map = {
+                      1: [this.getData, this.getClientApplyCount],
+                      2: [this.getCpuChart],
+                      3: [this.getMemoryChart],
+                    }
+                    this.clearUserInterval();
+                    var intervalTasks = map[this.activeIndex];
+                    for (var i=0,len=intervalTasks.length; i<len; i++) {
+                        intervalTasks[i]();
+                        this.intervals.push(setInterval(intervalTasks[i], 5000));    
                     }
                 },
-                runTerminalCommand: function (id, command) {
-                    var _this = this;
-                    return axios.post("/run_ssh_command", "client_id=" + Number(id) + "&command=" + String(command))
-                    .then(function (ret) {
-                        if (ret) {
-                            ret = ret.data;
-                            if (ret.ok) {
-                                var message = ret.message.replaceAll("\n", "\r\n")
-                                _this.terminal.write("reply:  " + message + "\r\n");
-                            } else {
-                                _this.$message({
-                                    type: 'error',
-                                    message: ret.message
-                                })
-                            }
-                        }
-                    })
-                }
             },
             mounted: function () {
                 var _this = this;
@@ -809,16 +1143,10 @@
                 });
                 document.querySelectorAll(".dialog-footer").forEach((node) => { node.style.display = "block" });
 
-                this.getData();
-                this.dataInter = setInterval(this.getData, 5000);
-
-                this.getMemoryChart();
-                this.memoryChartInter = setInterval(this.getMemoryChart, 10000);
-
-                this.getCpuChart();
-                this.cpuChartInter = setInterval(this.getCpuChart, 10000);
-
-                this.initTerminal();
+                this.initTabInterval();
+                
+                // terminal
+                this.updateCwd();
             },
         })
     </script>
