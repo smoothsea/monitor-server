@@ -883,7 +883,7 @@
                                         _this.net_tx_byte_chart = data;
                                     } else {
                                        if (Array.from(_this.net_tx_byte_chart.legend.data).sort().toString() == data.legend.data.sort().toString()) {
-                                          _this.net_tx_byte_chart = Object.assign(_this.net_rx_byte_chart, data);
+                                          _this.net_tx_byte_chart = Object.assign(_this.net_tx_byte_chart, data);
                                        } else {
                                           _this.net_tx_byte_chart = data;
                                        }
@@ -1276,7 +1276,8 @@
                 },
                 bytesToSize: function(bytes) {
                    var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-                   if (bytes == 0) return '0 Byte';
+                   if (bytes <= 0) return '0 Byte';
+                   
                    var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
                    return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
                 }
