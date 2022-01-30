@@ -1,6 +1,6 @@
-use rusqlite::{Connection, NO_PARAMS};
-use chrono::{Local};
+use chrono::Local;
 use std::collections::HashMap;
+use rusqlite::{Connection, NO_PARAMS};
 
 pub struct Db {
     pub conn:Connection,

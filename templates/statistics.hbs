@@ -867,7 +867,7 @@
                                 if (direction == 0) {
                                     data["title"] = {"text" : "实时流量 (下行)"};
                                     if (!_this.net_rx_byte_chart_init) {
-                                        net_rx_byte_chart_init = true;
+                                        _this.net_rx_byte_chart_init = true;
                                         _this.net_rx_byte_chart = data;
                                     } else {
                                        if (Array.from(_this.net_rx_byte_chart.legend.data).sort().toString() == data.legend.data.sort().toString()) {
@@ -879,7 +879,7 @@
                                 } else {
                                     data["title"] = {"text" : "实时流量 (上行)"};
                                     if (!_this.net_tx_byte_chart_init) {
-                                        net_tx_byte_chart_init = true;
+                                        _this.net_tx_byte_chart_init = true;
                                         _this.net_tx_byte_chart = data;
                                     } else {
                                        if (Array.from(_this.net_tx_byte_chart.legend.data).sort().toString() == data.legend.data.sort().toString()) {

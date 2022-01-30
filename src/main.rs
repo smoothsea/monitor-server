@@ -6,35 +6,32 @@ mod function;
 mod model;
 
 use db::Db;
+use ssh2::Session; 
+use chrono::Duration;
+use std::sync::Mutex;
+use serde::Deserialize;
+use rusqlite::NO_PARAMS;
+use std::net::TcpStream;
+use rocket::http::Status;
+use std::io::prelude::*;
+use rocket::{State, Outcome};
+use rocket_contrib::json::Json;
+use rocket::response::Redirect;
 use function::{Res, clean_data};
+use chrono::{Local, NaiveDateTime};
+use rocket::http::{Cookie, Cookies};
+use rocket_contrib::serve::StaticFiles;
 use rocket_contrib::templates::Template;
-use model::{check_login, str_to_chart_duration,
+use rocket::request::{self, Request, FromRequest, Form};
+use model::{
+    check_login, str_to_chart_duration,delete_client as delete_client_operation,edit_client as edit_client_operation, add_client as add_client_operation, get_client,
     get_client_statistics, StatisticsRow, 
     TaskRow, set_task as set_operation,get_tasks, cancel_task as cancel_task_operation,
-    delete_client as delete_client_operation,edit_client as edit_client_operation, add_client as add_client_operation, get_client, 
     get_memory_chart as get_memory_chart_m, MemoryChartLine,
     get_cpu_chart as get_cpu_chart_m,CpuChartLine,
     get_byte_chart as get_byte_chart_m,ByteChartLine,
     create_apply,pass_apply as pass_apply_operation,reject_apply as reject_apply_operation,get_client_applys, ClientApplyRow,
 };
-
-use rocket::Outcome;
-use rocket::State;
-use rocket::http::Status;
-use rocket_contrib::serve::StaticFiles;
-use rocket::request::{self, Request, FromRequest, Form};
-use rocket::response::Redirect;
-use rocket::http::{Cookie, Cookies};
-use rocket_contrib::json::Json;
-use chrono::{Local, NaiveDateTime};
-use serde::Deserialize;
-use rusqlite::NO_PARAMS;
-
-use std::sync::Mutex;
-use std::net::TcpStream;
-use chrono::Duration;
-use ssh2::Session; 
-use std::io::prelude::*;
 
 #[macro_export]
 macro_rules! fatal {
@@ -45,6 +42,7 @@ macro_rules! fatal {
     };
 }
 
+// Client auth
 #[derive(Debug)]
 struct Client(u32);
 
@@ -92,6 +90,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
     }
 }
 
+// Admin auth
 #[derive(Debug)]
 struct Admin(i32);
 
@@ -121,27 +120,22 @@ impl <'a, 'r> FromRequest<'a, 'r> for Admin {
 
 // updates client online status
 #[get("/check_online")]
-fn check_online() -> &'static str {
+fn check_online() {
     let now = Local::now().timestamp();
     let offline_second = 30;
     let db:Db;
     if let Ok(d) = Db::get_db() {
         db = d;
     } else {
-        return "error";
+        return ();
     }
 
     let mut ids = Vec::new();
     if let Ok(mut smtm) = db.conn.prepare("select id,last_online_time from client where is_online=1") {
         if let Ok(mut ret) = smtm.query(NO_PARAMS) {
-
             while let Some(row) = ret.next().unwrap() {
+                let id:u32 = row.get(0).unwrap();
                 let last_online_time:String;
-                let mut id:i32 = 0;
-                if let Ok(i) = row.get(0) {
-                    id = i;
-                } 
-                
                 if let Ok(time) = row.get(1) {
                     last_online_time = time;
                 } else {
@@ -149,13 +143,12 @@ fn check_online() -> &'static str {
                     continue;
                 }
 
-                if let Ok(time) =  NaiveDateTime::parse_from_str(&last_online_time, "%Y-%m-%d %H:%M:%S") {
+                if let Ok(time) = NaiveDateTime::parse_from_str(&last_online_time, "%Y-%m-%d %H:%M:%S") {
                     if now - time.timestamp() + 3600*8 > offline_second {
                         ids.push(id);
                     } 
                 } else {
                     ids.push(id);
-                    continue;                 
                 }
             }
         }
@@ -170,44 +163,6 @@ fn check_online() -> &'static str {
         sql = sql.chars().take(len-2).collect();
         db.conn.execute(&sql, NO_PARAMS).unwrap_or_default();
     }
-
-    ""
-}
-
-
-#[post("/get_task")]
-fn get_task(client:Client) -> Json<Res>{
-    let client_id = client.0;
-    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let db:Db;
-
-    if let Ok(d) = Db::get_db() {
-        db = d;
-    } else {
-        return Res::error(Some("数据库连接错误".to_string()));
-    }
-    
-    let mut tasks:Vec<String> = Vec::new();
-    match db.conn.prepare("select task_type from task where client_id=?1 and is_valid=?2") {
-        Ok(mut smtm) => {
-            if let Ok(mut ret) = smtm.query(&[client_id, 1]) {
-                while let Some(row) = ret.next().unwrap() {
-                    if let Ok(task) = row.get(0) {
-                        tasks.push(task);
-                    }
-                }
-
-                if let Err(_e) = db.conn.execute(&format!("update task set is_valid=?1,pulled_at='{}' where client_id=?2 and is_valid=?3", now), &[0, client_id, 1]) {
-                    return Res::error(Some("操作错误".to_string()));
-                }
-            }
-        },
-        Err(_e) => {
-            return Res::error(Some("数据查询错误".to_string()));
-        }
-    }
-    
-    Res::ok(None, Some(tasks))
 }
 
 #[derive(Deserialize, Debug)]
@@ -288,25 +243,6 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
     Res::ok(None, None)
 }
 
-#[derive(Deserialize, Debug)]
-struct TaskParams {
-    client_id: u32,
-    task_type: String,
-}
-
-#[post("/set_task", data="<task>")]
-fn set_task(task: Json<TaskParams>) -> Json<Res>{
-    let task_type = task.task_type.clone();
-    match set_operation(task.client_id, task_type) {
-        Ok(_d) => {
-            return Res::ok(None, None);
-        },
-        Err(e) => {
-            return Res::error(Some(e.to_string())); 
-        }
-    } 
-}
-
 #[get("/")]
 fn index() -> Redirect{
     Redirect::to(uri!(login))
@@ -338,6 +274,7 @@ fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Json<Res>{
     }
 }
 
+// Client
 #[get("/statistics")]
 fn statistics(_admin: Admin) -> Template{
     Template::render("statistics", "")
@@ -352,64 +289,6 @@ fn get_statistics(_admin: Admin) -> Json<Vec<StatisticsRow>>{
     }
 }
 
-#[post("/get_memory_chart")]
-fn get_memory_chart(_admin: Admin) -> Json<Vec<MemoryChartLine>>{
-    if let Ok(ret) = get_memory_chart_m() {
-        Json(ret)     
-    } else {
-        Json(vec!())
-    }
-}
-
-#[post("/get_cpu_chart")]
-fn get_cpu_chart(_admin: Admin) -> Json<Vec<CpuChartLine>>{
-    if let Ok(ret) = get_cpu_chart_m() {
-        Json(ret)     
-    } else {
-        Json(vec!())
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct ByteChartParams {
-    direction: u8,
-    duration: String,
-}
-
-#[post("/get_byte_chart", data="<params>")]
-fn get_byte_chart(params: Json<ByteChartParams>, _admin: Admin) -> Json<Vec<ByteChartLine>>{
-    let duration = match str_to_chart_duration(&params.duration) {
-        Ok(d) => d,
-        Err(_e) => {
-            return Json(vec!());
-        }
-    };
-    if let Ok(ret) = get_byte_chart_m(params.direction, duration) {
-        Json(ret)     
-    } else {
-        Json(vec!())
-    }
-}
-
-#[derive(FromForm, Debug)]
-struct OprateParams {
-    client_id: u32,
-    operation: String,
-}
-
-#[post("/operate", data="<params>")]
-fn operate(_admin: Admin, params:Form<OprateParams>) -> Json<Res> {
-    let operation = params.operation.clone();
-    match set_operation(params.client_id, operation) {
-        Ok(_d) => {
-            return Res::ok(None, None);
-        },
-        Err(e) => {
-            return Res::error(Some(e.to_string())); 
-        }
-    } 
-}
-
 #[derive(FromForm, Debug)]
 struct DeleteClientParams {
     client_id: u32,
@@ -419,80 +298,6 @@ struct DeleteClientParams {
 fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res> 
 {
     match delete_client_operation(params.client_id) {
-        Ok(_d) => {
-            return Res::ok(None, None);
-        },
-        Err(e) => {
-            return Res::error(Some(e.to_string())); 
-        }
-    } 
-}
-
-#[derive(FromForm, Debug)]
-struct TasksParams {
-    client_id: u32,
-}
-
-#[post("/tasks", data="<params>")]
-fn tasks(_admin: Admin, params:Form<TasksParams>) -> Json<Vec<TaskRow>>
-{
-    if let Ok(ret) = get_tasks(params.client_id) {
-        Json(ret)     
-    } else {
-        Json(vec!())
-    }
-}
-
-#[derive(FromForm, Debug)]
-struct CancelTaskParams {
-    task_id: u32,
-}
-
-#[post("/cancel_task", data="<params>")]
-fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res> 
-{
-    match cancel_task_operation(params.task_id) {
-        Ok(_d) => {
-            return Res::ok(None, None);
-        },
-        Err(e) => {
-            return Res::error(Some(e.to_string())); 
-        }
-    } 
-}
-
-#[post("/client_applys")]
-fn client_applys(_admin: Admin) -> Json<Vec<ClientApplyRow>>
-{
-    if let Ok(ret) = get_client_applys() {
-        Json(ret)     
-    } else {
-        Json(vec!())
-    }
-}
-
-#[derive(FromForm, Debug)]
-struct ApplyOperationParam {
-    id: u32,
-}
-
-#[post("/pass_apply", data="<params>")]
-fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
-{
-    match pass_apply_operation(params.id) {
-        Ok(_d) => {
-            return Res::ok(None, None);
-        },
-        Err(e) => {
-            return Res::error(Some(e.to_string())); 
-        }
-    } 
-}
-
-#[post("/reject_apply", data="<params>")]
-fn reject_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
-{
-    match reject_apply_operation(params.id) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -550,6 +355,198 @@ fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res>
     } 
 }
 
+// Memory
+#[post("/get_memory_chart")]
+fn get_memory_chart(_admin: Admin) -> Json<Vec<MemoryChartLine>>{
+    if let Ok(ret) = get_memory_chart_m() {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+// Cpu
+#[post("/get_cpu_chart")]
+fn get_cpu_chart(_admin: Admin) -> Json<Vec<CpuChartLine>>{
+    if let Ok(ret) = get_cpu_chart_m() {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+// Net
+#[derive(Deserialize, Debug)]
+struct ByteChartParams {
+    direction: u8,
+    duration: String,
+}
+
+#[post("/get_byte_chart", data="<params>")]
+fn get_byte_chart(params: Json<ByteChartParams>, _admin: Admin) -> Json<Vec<ByteChartLine>>{
+    let duration = match str_to_chart_duration(&params.duration) {
+        Ok(d) => d,
+        Err(_e) => {
+            return Json(vec!());
+        }
+    };
+    if let Ok(ret) = get_byte_chart_m(params.direction, duration) {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+// Task
+#[derive(FromForm, Debug)]
+struct TasksParams {
+    client_id: u32,
+}
+
+#[post("/tasks", data="<params>")]
+fn tasks(_admin: Admin, params:Form<TasksParams>) -> Json<Vec<TaskRow>>
+{
+    if let Ok(ret) = get_tasks(params.client_id) {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+#[derive(FromForm, Debug)]
+struct CancelTaskParams {
+    task_id: u32,
+}
+
+#[post("/cancel_task", data="<params>")]
+fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res> 
+{
+    match cancel_task_operation(params.task_id) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+#[post("/get_task")]
+fn get_task(client:Client) -> Json<Res>{
+    let client_id = client.0;
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let db:Db;
+
+    if let Ok(d) = Db::get_db() {
+        db = d;
+    } else {
+        return Res::error(Some("数据库连接错误".to_string()));
+    }
+    
+    let mut tasks:Vec<String> = Vec::new();
+    match db.conn.prepare("select task_type from task where client_id=?1 and is_valid=?2") {
+        Ok(mut smtm) => {
+            if let Ok(mut ret) = smtm.query(&[client_id, 1]) {
+                while let Some(row) = ret.next().unwrap() {
+                    if let Ok(task) = row.get(0) {
+                        tasks.push(task);
+                    }
+                }
+
+                if let Err(_e) = db.conn.execute(&format!("update task set is_valid=?1,pulled_at='{}' where client_id=?2 and is_valid=?3", now), &[0, client_id, 1]) {
+                    return Res::error(Some("操作错误".to_string()));
+                }
+            }
+        },
+        Err(_e) => {
+            return Res::error(Some("数据查询错误".to_string()));
+        }
+    }
+    
+    Res::ok(None, Some(tasks))
+}
+
+#[derive(FromForm, Debug)]
+struct OprateParams {
+    client_id: u32,
+    operation: String,
+}
+
+#[post("/operate", data="<params>")]
+fn operate(_admin: Admin, params:Form<OprateParams>) -> Json<Res> {
+    let operation = params.operation.clone();
+    match set_operation(params.client_id, operation) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+#[derive(Deserialize, Debug)]
+struct TaskParams {
+    client_id: u32,
+    task_type: String,
+}
+
+#[post("/set_task", data="<task>")]
+fn set_task(task: Json<TaskParams>) -> Json<Res>{
+    let task_type = task.task_type.clone();
+    match set_operation(task.client_id, task_type) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+// Client apply
+#[post("/client_applys")]
+fn client_applys(_admin: Admin) -> Json<Vec<ClientApplyRow>>
+{
+    if let Ok(ret) = get_client_applys() {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+#[derive(FromForm, Debug)]
+struct ApplyOperationParam {
+    id: u32,
+}
+
+#[post("/pass_apply", data="<params>")]
+fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
+{
+    match pass_apply_operation(params.id) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+#[post("/reject_apply", data="<params>")]
+fn reject_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
+{
+    match reject_apply_operation(params.id) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+// Terminal
 #[derive(FromForm, Debug)]
 struct ConnectSshClientParams {
     client_id: u32,
@@ -658,16 +655,15 @@ fn main() {
 
     rocket::ignite()
     .mount("/public", StaticFiles::from("./templates/static"))
-    .mount("/", routes![get_task, set_status, 
-     check_online, login, do_login,
-     statistics, get_statistics, operate, index,
-     delete_client, edit_client, add_client, 
-     tasks, cancel_task, set_task, 
-     get_memory_chart,
-     get_cpu_chart,
-     get_byte_chart,
-     connect_ssh_client,run_ssh_command,
-     client_applys,pass_apply,reject_apply,
+    .mount("/", routes![
+         check_online, login, do_login,
+         get_task, set_status, operate, tasks, cancel_task, set_task, 
+         statistics, get_statistics, index, delete_client, edit_client, add_client, 
+         get_memory_chart,
+         get_cpu_chart,
+         get_byte_chart,
+         connect_ssh_client,run_ssh_command,
+         client_applys,pass_apply,reject_apply,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)
