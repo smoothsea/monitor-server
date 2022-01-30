@@ -734,6 +734,7 @@ dependencies = [
  "chrono",
  "md5",
  "rand",
+ "regex",
  "rocket",
  "rocket_contrib",
  "rusqlite",

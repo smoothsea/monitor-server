@@ -5,29 +5,32 @@ mod db;
 mod function;
 mod model;
 
-use db::{Db};
+use db::Db;
 use function::{Res, clean_data};
 use rocket_contrib::templates::Template;
-use model::{check_login, get_client_statistics, StatisticsRow, TaskRow, 
-    set_task as set_operation, delete_client as delete_client_operation,edit_client as edit_client_operation, add_client as add_client_operation, get_client, 
-    get_tasks, cancel_task as cancel_task_operation, 
-    get_memory_chart as get_memory_chart_m, MemoryChartLine, get_cpu_chart as get_cpu_chart_m,CpuChartLine,
+use model::{check_login, str_to_chart_duration,
+    get_client_statistics, StatisticsRow, 
+    TaskRow, set_task as set_operation,get_tasks, cancel_task as cancel_task_operation,
+    delete_client as delete_client_operation,edit_client as edit_client_operation, add_client as add_client_operation, get_client, 
+    get_memory_chart as get_memory_chart_m, MemoryChartLine,
+    get_cpu_chart as get_cpu_chart_m,CpuChartLine,
+    get_byte_chart as get_byte_chart_m,ByteChartLine,
     create_apply,pass_apply as pass_apply_operation,reject_apply as reject_apply_operation,get_client_applys, ClientApplyRow,
 };
 
 use rocket::Outcome;
 use rocket::State;
 use rocket::http::Status;
-use rocket_contrib::serve::{StaticFiles};
+use rocket_contrib::serve::StaticFiles;
 use rocket::request::{self, Request, FromRequest, Form};
 use rocket::response::Redirect;
 use rocket::http::{Cookie, Cookies};
 use rocket_contrib::json::Json;
 use chrono::{Local, NaiveDateTime};
 use serde::Deserialize;
-use rusqlite::{NO_PARAMS};
+use rusqlite::NO_PARAMS;
 
-use std::sync::{ Mutex };
+use std::sync::Mutex;
 use std::net::TcpStream;
 use chrono::Duration;
 use ssh2::Session; 
@@ -43,7 +46,7 @@ macro_rules! fatal {
 }
 
 #[derive(Debug)]
-struct Client(i32);
+struct Client(u32);
 
 #[derive(Debug)]
 enum ClientError{
@@ -64,8 +67,8 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
         if let Ok(d) = Db::get_db() {
             db = d;
             // verifys client info
-            match db.conn.query_row::<Vec<i32>,_,_>("select id from client where client_ip=?1 and is_enable=1", &[&remote_ip], |row| {
-                Ok(vec![row.get(0)?])
+            match db.conn.query_row::<u32,_,_>("select id from client where client_ip=?1 and is_enable=1", &[&remote_ip], |row| {
+                Ok(row.get(0)?)
             }) {
                 Ok(ret) => {
                     // updates client connection info
@@ -73,7 +76,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
                         return Outcome::Failure((Status::BadRequest, ClientError::NotPermit));
                     }
                     
-                    return Outcome::Success(Client(ret[0]));
+                    return Outcome::Success(Client(ret));
                 },
                 Err(_e) => {
                     // 
@@ -350,20 +353,41 @@ fn get_statistics(_admin: Admin) -> Json<Vec<StatisticsRow>>{
 }
 
 #[post("/get_memory_chart")]
-fn get_memory_chart(_admin: Admin) -> Json<Option<Vec<MemoryChartLine>>>{
+fn get_memory_chart(_admin: Admin) -> Json<Vec<MemoryChartLine>>{
     if let Ok(ret) = get_memory_chart_m() {
-        Json(Some(ret))     
+        Json(ret)     
     } else {
-        Json(None)
+        Json(vec!())
     }
 }
 
 #[post("/get_cpu_chart")]
-fn get_cpu_chart(_admin: Admin) -> Json<Option<Vec<CpuChartLine>>>{
+fn get_cpu_chart(_admin: Admin) -> Json<Vec<CpuChartLine>>{
     if let Ok(ret) = get_cpu_chart_m() {
-        Json(Some(ret))     
+        Json(ret)     
     } else {
-        Json(None)
+        Json(vec!())
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct ByteChartParams {
+    direction: u8,
+    duration: String,
+}
+
+#[post("/get_byte_chart", data="<params>")]
+fn get_byte_chart(params: Json<ByteChartParams>, _admin: Admin) -> Json<Vec<ByteChartLine>>{
+    let duration = match str_to_chart_duration(&params.duration) {
+        Ok(d) => d,
+        Err(_e) => {
+            return Json(vec!());
+        }
+    };
+    if let Ok(ret) = get_byte_chart_m(params.direction, duration) {
+        Json(ret)     
+    } else {
+        Json(vec!())
     }
 }
 
@@ -635,10 +659,13 @@ fn main() {
     rocket::ignite()
     .mount("/public", StaticFiles::from("./templates/static"))
     .mount("/", routes![get_task, set_status, 
-    set_task, check_online, login, do_login,
+     check_online, login, do_login,
      statistics, get_statistics, operate, index,
-     delete_client, edit_client, add_client, tasks,
-     cancel_task,get_memory_chart,get_cpu_chart,
+     delete_client, edit_client, add_client, 
+     tasks, cancel_task, set_task, 
+     get_memory_chart,
+     get_cpu_chart,
+     get_byte_chart,
      connect_ssh_client,run_ssh_command,
      client_applys,pass_apply,reject_apply,
      ])

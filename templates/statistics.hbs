@@ -199,9 +199,10 @@
     <div id="app" v-clock>
         <el-menu :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect" v-show="tab_show">
             <el-menu-item index="1">客户端</el-menu-item>
-            <el-menu-item index="2">CPU图</el-menu-item>
-            <el-menu-item index="3">内存图</el-menu-item>
-            <el-menu-item index="4">Terminal</el-menu-item>
+            <el-menu-item index="2">CPU</el-menu-item>
+            <el-menu-item index="3">内存</el-menu-item>
+            <el-menu-item index="4">网络</el-menu-item>
+            <el-menu-item index="5" id="terminal-index">Terminal</el-menu-item>
         </el-menu>
         <div class="line"></div>
 
@@ -363,14 +364,23 @@
         </el-dialog>
 
         <div class="memory-chat submenu" v-if="activeIndex==2 && cpu_chart_show">
-            <v-chart :options="cpu_chart" />
+            <v-chart :options="cpu_chart"/>
         </div>
 
-        <div class="memory-chat submenu" v-if="activeIndex==3 &&  memory_chart_show">
-            <v-chart :options="memory_chart" />
+        <div class="memory-chat submenu" v-if="activeIndex==3 && memory_chart_show">
+            <v-chart :options="memory_chart"/>
         </div>
 
-        <div v-show="activeIndex==4" id="terminal" @click="focusTerminal(event)">
+        <div class="memory-chat submenu" v-if="activeIndex==4">
+            <div><v-chart :options="net_rx_byte_chart"/></div>
+            <br/>
+            <br/>
+            <br/>
+            <br/>
+            <div><v-chart :options="net_tx_byte_chart"/></div>
+        </div>
+
+        <div v-show="activeIndex==5" id="terminal" @click="focusTerminal(event)">
            <div id="shell">
               <pre id="shell-content" v-html="terminal_content">
               </pre>
@@ -393,7 +403,6 @@
             padding: 10px;
         }
     </style>
-
     <script>
         Vue.component('v-chart', VueECharts)
         var APPLY_REJECT_TXT = "已拒绝";
@@ -431,9 +440,19 @@
                 // memory
                 memory_chart: {},
                 memory_chart_show: false,
+                memory_chart_init: false,
                 // cpu
                 cpu_chart: {},
                 cpu_chart_show: false,
+                cpu_chart_init: false,
+                // net
+                net_chart_show: false,
+                net_rx_byte_chart: {},
+                net_rx_byte_chart_init: false,
+
+                net_tx_byte_chart: {},
+                net_tx_byte_chart_init: false,
+                
                 // task
                 task_pop: false,
                 task_list_loading: true,
@@ -666,7 +685,6 @@
                                     series[name] = {
                                         name: name,
                                         type: "line",
-                                        symbol: "none",
                                         data: [rate]
                                     };
                                 } else {
@@ -687,8 +705,11 @@
                             })
 
                             if (ret.length > 0) {
-                                _this.memory_chart = {
+                                var data = {
                                     title: { "text": "内存占用" },
+                                    tooltip: {
+                                        show:true,
+                                    },
                                     legend: {
                                         data: legend,
                                     },
@@ -697,8 +718,17 @@
                                         data: xAxis,
                                     },
                                     series: series,
-
                                 };
+                                if (!_this.memory_chart_init) {
+                                    _this.memory_chart_init = true;
+                                    _this.memory_chart = data;
+                                } else {
+                                   if (Array.from(_this.memory_chart.legend.data).sort().toString() == data.legend.data.sort().toString()) {
+                                      _this.memory_chart = Object.assign(_this.memory_chart, data);
+                                   } else {
+                                      _this.memory_chart = data;
+                                   }
+                                }
                                 _this.memory_chart_show = true;
                             }
                         }
@@ -723,7 +753,6 @@
                                     series[name] = {
                                         name: name,
                                         type: "line",
-                                        symbol: "none",
                                         data: [rate]
                                     };
                                 } else {
@@ -735,6 +764,73 @@
                                 }
                             }
 
+                            series = Object.values(series);
+                            lengend = legend.sort((left, right) => {
+                                return left > right ? 1 : -1;
+                            })
+                            series = series.sort((left, right) => {
+                                return left.name > right.name ? 1 : -1;
+                            })
+
+                            if (ret.length > 0) {
+                                var data = {
+                                    title: { "text": "CPU占用" },
+                                    tooltip: {
+                                        show:true,
+                                    },
+                                    yAxis: {},
+                                    xAxis: {
+                                        data: xAxis,
+                                    },
+                                    series: series,
+                                    legend: {
+                                        data: legend,
+                                    },
+                                  };
+                                if (!_this.cpu_chart_init) {
+                                    _this.cpu_chart_init = true;
+                                    _this.cpu_chart = data;
+                                } else {
+                                   if (Array.from(_this.cpu_chart.legend.data).sort().toString() == data.legend.data.sort().toString()) {
+                                      _this.cpu_chart = Object.assign(_this.cpu_chart, data);
+                                   } else {
+                                      _this.cpu_chart = data;
+                                   }
+                                }
+                                _this.cpu_chart_show = true;
+                            }
+                        }
+                    }).then(function () {
+                    });
+                },
+                // net
+                getByteChart: function (direction) {
+                    var _this = this;
+                    axios.post("/get_byte_chart", {direction: direction, duration: "3i"}).then(function (ret) {
+                        if (ret.status) {
+                            ret = ret.data;
+                            let legend = [];
+                            let xAxis = [];
+                            let series = {};
+                            for (let i = 0, len = ret.length; i < len; i++) {
+                                let name = ret[i]["name"];
+                                let flow = ret[i]["byte"];
+                                let date = _this.getLastDate(ret[i]["time"]);
+                                if (legend.indexOf(name) == -1) {
+                                    legend.push(name);
+                                    series[name] = {
+                                        name: name,
+                                        type: "line",
+                                        data: [flow]
+                                    };
+                                } else {
+                                    series[name]["data"].push(flow);
+                                }
+
+                                if (xAxis.indexOf(date) == -1) {
+                                    xAxis.push(date);
+                                }
+                            }
 
                             series = Object.values(series);
                             lengend = legend.sort((left, right) => {
@@ -745,19 +841,56 @@
                             })
 
                             if (ret.length > 0) {
-                                _this.cpu_chart = {
-                                    title: { "text": "CPU占用" },
-                                    legend: {
-                                        data: legend,
+                                var data = {
+                                    tooltip: {
+                                        show: true,
+                                        formatter: function (params) {
+                                            return params.seriesName + ": " + _this.bytesToSize(params.value);   
+                                        } 
                                     },
-                                    yAxis: {},
+                                    yAxis: {
+                                        axisLabel: {
+                                            formatter: function (value, index) {
+                                                return _this.bytesToSize(value);
+                                              }
+                                          }
+                                    },
                                     xAxis: {
                                         data: xAxis,
                                     },
                                     series: series,
+                                    legend: {
+                                        data: legend,
+                                    },
+                                  };
 
-                                };
-                                _this.cpu_chart_show = true;
+                                if (direction == 0) {
+                                    data["title"] = {"text" : "实时流量 (下行)"};
+                                    if (!_this.net_rx_byte_chart_init) {
+                                        net_rx_byte_chart_init = true;
+                                        _this.net_rx_byte_chart = data;
+                                    } else {
+                                       if (Array.from(_this.net_rx_byte_chart.legend.data).sort().toString() == data.legend.data.sort().toString()) {
+                                          _this.net_rx_byte_chart = Object.assign(_this.net_rx_byte_chart, data);
+                                       } else {
+                                          _this.net_rx_byte_chart = data;
+                                       }
+                                    }
+                                } else {
+                                    data["title"] = {"text" : "实时流量 (上行)"};
+                                    if (!_this.net_tx_byte_chart_init) {
+                                        net_tx_byte_chart_init = true;
+                                        _this.net_tx_byte_chart = data;
+                                    } else {
+                                       if (Array.from(_this.net_tx_byte_chart.legend.data).sort().toString() == data.legend.data.sort().toString()) {
+                                          _this.net_tx_byte_chart = Object.assign(_this.net_rx_byte_chart, data);
+                                       } else {
+                                          _this.net_tx_byte_chart = data;
+                                       }
+                                    }
+                                }
+
+                                _this.net_chart_show = true;
                             }
                         }
                     }).then(function () {
@@ -850,7 +983,7 @@
                             if (ret) {
                                 ret = ret.data;
                                 if (ret.ok) {
-                                    _this.activeIndex = 4;
+                                    _this.activeIndex = 5;
                                     _this.teriminalId = id;
                                     _this.terminal_content = address + " connect ok\r\n";
                                     _this.terminal_command_enable = true;
@@ -867,7 +1000,7 @@
                             }
                         })
                     } else {
-                      _this.activeIndex = 4;
+                      _this.activeIndex = 5;
                       document.getElementById("shell-cmd").focus();
                     }
                 },
@@ -1110,18 +1243,43 @@
                     this.initTabInterval();
                 },
                 initTabInterval: function () {
+                    var _this = this;
                     var map = {
                       1: [this.getData, this.getClientApplyCount],
                       2: [this.getCpuChart],
                       3: [this.getMemoryChart],
+                      4: [this.getByteChart, this.getByteChart],
+                    }
+                    var params = {
+                      4: [[0], [1]],
                     }
                     this.clearUserInterval();
+
                     var intervalTasks = map[this.activeIndex];
-                    for (var i=0,len=intervalTasks.length; i<len; i++) {
-                        intervalTasks[i]();
-                        this.intervals.push(setInterval(intervalTasks[i], 5000));    
+                    if (intervalTasks) {
+                        for (var i=0,len=intervalTasks.length; i<len; i++) {
+                            var call = function () {
+                                var cb = intervalTasks[i];
+                                try {
+                                    var p = params[_this.activeIndex][i];
+                                } catch (e) {
+                                    var p = [];
+                                }
+                                return function () {
+                                    cb.apply(_this, p);
+                                };
+                            }
+                            call()();
+                            _this.intervals.push(setInterval(call(), 5000));    
+                        }
                     }
                 },
+                bytesToSize: function(bytes) {
+                   var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                   if (bytes == 0) return '0 Byte';
+                   var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+                   return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+                }
             },
             mounted: function () {
                 var _this = this;

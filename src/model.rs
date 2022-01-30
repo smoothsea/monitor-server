@@ -1,12 +1,12 @@
-use std::error::Error;
 use md5;
-use rusqlite::{NO_PARAMS};
-use serde::{Serialize};
-use chrono::{Local, Duration};
-use core::ops::Sub;
-use core::ops::Add;
-
+use regex::Regex;
 use crate::db::Db;
+use serde::Serialize;
+use std::error::Error;
+use rusqlite::NO_PARAMS;
+use core::ops::{Sub, Add};
+use chrono::{Local, Duration};
+use chrono::naive::NaiveDateTime;
 
 // clean statistics data
 pub fn clean_data(save_days: i64) -> Result<(), Box<dyn Error>> {
@@ -135,6 +135,33 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
     return Err("")?;
 }
 
+#[derive(Debug)]
+pub enum ChartDuration
+{
+    Minutes(u8), 
+    Hours(u8), 
+    Days(u8), 
+}
+
+pub fn str_to_chart_duration(s: &str) -> Result<ChartDuration, Box<dyn Error>>
+{
+    let re = Regex::new(r"^(?P<num>\d+)(?P<type>[ihd])$")?;
+    if let Some(r) = re.captures(s) {
+        let d = match &r["type"] {
+            "i" => ChartDuration::Minutes(r["num"].parse()?),
+            "h" => ChartDuration::Hours(r["num"].parse()?),
+            "d" => ChartDuration::Days(r["num"].parse()?),
+            _ => {
+              return Err("格式错误")?;
+            }
+        };
+        println!("{:?}", d);
+        return Ok(d);
+    } else {
+        Err("格式错误")?
+    }
+}
+
 #[derive(Serialize,Debug)]
 pub struct MemoryChartLine
 {
@@ -223,6 +250,78 @@ pub fn get_cpu_chart() -> Result<Vec<CpuChartLine>, Box<dyn Error>>
                             cpu_user,
                         };
                         data.push(line)
+                    }
+
+                    return Ok(data);
+                }
+            },
+            Err(_e) => {
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+
+#[derive(Serialize,Debug)]
+pub struct ByteChartLine
+{
+    name: String,
+    time: String,
+    byte: u32,
+}
+
+pub fn get_byte_chart(direction: u8, duration: ChartDuration) -> Result<Vec<ByteChartLine>, Box<dyn Error>>
+{
+    let byte_filed = match direction {
+        0 => "rx_bytes",
+        1 => "tx_bytes",
+        _ => "rx_bytes",
+    };
+    let d = match duration {
+        ChartDuration::Minutes(i) => Duration::minutes(i as i64), 
+        ChartDuration::Hours(i) => Duration::hours(i as i64), 
+        ChartDuration::Days(i) => Duration::days(i as i64), 
+    };
+    let time = Local::now()
+        .sub(d)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+    if let Ok(db) = Db::get_db() {
+        let sql = &format!(r"
+                    select m.client_id,sum(m.{}) as bytes,m.created_at,c.name from network_stats_info as m
+                    join client as c on m.client_id=c.id 
+                    where m.created_at>?1 
+                    group by m.client_id,m.created_at
+            ", byte_filed);
+        match db.conn.prepare(sql) {
+            Ok(mut smtm) => {
+                if let Ok(mut ret) = smtm.query(&[&time]) {
+                    let mut data:Vec<ByteChartLine> = vec!();
+                    let mut last_bytes = 0;
+                    let mut last_time = "".to_string();
+                    while let Some(row) = ret.next().unwrap() {
+                        let byte = row.get(1)?;
+                        let name = row.get(3)?;
+                        let time = row.get(2)?;
+                        
+                        if last_bytes == 0 {
+                            last_bytes = byte; 
+                            last_time = time;
+                        } else {
+                            let byte_diff = byte - last_bytes;
+                            let time_diff = NaiveDateTime::parse_from_str(&time, "%Y-%m-%d %H:%M:%S")?.timestamp()
+                                - NaiveDateTime::parse_from_str(&last_time, "%Y-%m-%d %H:%M:%S")?.timestamp();
+                            let line = ByteChartLine{
+                                name,
+                                time,
+                                byte: byte_diff/time_diff as u32,
+                            };
+                            data.push(line)
+                        }
                     }
 
                     return Ok(data);
