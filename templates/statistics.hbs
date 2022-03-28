@@ -209,6 +209,8 @@
         <div v-show="activeIndex==1" class="submenu">
             <el-row type="flex" justify="center">
                 <el-table :data="list" :row-class-name="tableRowClassName" v-loading="list_loading"
+                :header-cell-style="{height:'20px', 'font-size':'15px'}"
+                :cell-style="{'font-size':'14px'}"
                 empty-text=" ">
                     <el-table-column prop="client_ip" header-align="left" fixed label="客户端ip" width="120px">
                     </el-table-column>
