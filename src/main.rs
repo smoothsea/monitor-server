@@ -23,15 +23,7 @@ use rocket::http::{Cookie, Cookies};
 use rocket_contrib::serve::StaticFiles;
 use rocket_contrib::templates::Template;
 use rocket::request::{self, Request, FromRequest, Form};
-use model::{
-    check_login, str_to_chart_duration,delete_client as delete_client_operation,edit_client as edit_client_operation, add_client as add_client_operation, get_client,
-    get_client_statistics, StatisticsRow, 
-    TaskRow, set_task as set_operation,get_tasks, cancel_task as cancel_task_operation,
-    get_memory_chart as get_memory_chart_m, MemoryChartLine,
-    get_cpu_chart as get_cpu_chart_m,CpuChartLine,
-    get_byte_chart as get_byte_chart_m,ByteChartLine,
-    create_apply,pass_apply as pass_apply_operation,reject_apply as reject_apply_operation,get_client_applys, ClientApplyRow,
-};
+use model::{ByteChartLine, ClientApplyRow, CpuChartLine, MemoryChartLine, SettingRow, StatisticsRow, TaskRow, add_client as add_client_operation, cancel_task as cancel_task_operation, check_login, create_apply, delete_client as delete_client_operation, edit_client as edit_client_operation, get_byte_chart as get_byte_chart_m, get_client, get_client_applys, get_client_statistics, get_cpu_chart as get_cpu_chart_m, get_memory_chart as get_memory_chart_m, get_setting as get_setting_m, get_tasks, pass_apply as pass_apply_operation, reject_apply as reject_apply_operation, save_setting as save_setting_m, set_task as set_operation, str_to_chart_duration};
 
 #[macro_export]
 macro_rules! fatal {
@@ -113,7 +105,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Admin {
                 return Outcome::Failure((Status::Forbidden, AdminError::NotPermit));
             }
         } else {
-            return Outcome::Failure((Status::Forbidden, AdminError::NotPermit));
+            return Outcome::Forward(());
         }
     }
 }
@@ -177,8 +169,10 @@ struct StatusParams<'a> {
     memory_free: Option<u64>,
     memory_total: Option<u64>,
     system_version: Option<String>,
-    package_manager: Option<u32>,
+    package_manager: Option<String>,
     network_stats: Vec<NetworkStat>,
+    disk_avail: Option<u64>,
+    disk_total: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -231,6 +225,9 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
     }
     if let Some(i) = status.package_manager.clone() {
         sql = format!("{},package_manager_update_count='{}'", sql, i);
+    } 
+    if let Some(i) = status.disk_avail.clone() {
+        sql = format!("{},disk_avail={},disk_total={}", sql, i, status.disk_total.clone().unwrap());
     } 
     sql = format!("{} where id={} ", sql, client_id);
 
@@ -639,6 +636,41 @@ struct SshSession {
     session: Mutex<Option<Session>>,
 }
 
+// Setting 
+#[post("/get_setting")]
+fn get_setting(_admin: Admin) -> Json<SettingRow>
+{
+    if let Ok(ret) = get_setting_m() {
+        Json(ret)     
+    } else {
+        Json(SettingRow {
+            pihole_server: "".to_string(),
+            es_server: "".to_string(),
+            k8s_server: "".to_string(),
+        })
+    }
+}
+
+#[derive(FromForm, Debug)]
+struct SaveSettingParam {
+    pihole_server: String,
+    es_server: String,
+    k8s_server: String,
+}
+
+#[post("/save_setting", data="<params>")]
+fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res> 
+{
+    match save_setting_m(&params.pihole_server, &params.es_server, &params.k8s_server) {
+        Ok(_d) => {
+            return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
         fatal!("数据库加载错误, {}", e);
@@ -664,6 +696,7 @@ fn main() {
          get_byte_chart,
          connect_ssh_client,run_ssh_command,
          client_applys,pass_apply,reject_apply,
+         get_setting, save_setting,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)

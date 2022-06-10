@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:i64 = 6;
+    const CURRENT_VESION:i64 = 7;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -86,6 +86,12 @@ impl Db {
             "create table network_stats_info (id integer primary key autoincrement,if_name varchar(16),rx_bytes UNSIGNED BIG INT,tx_bytes UNSIGNED BIG INT,rx_packets UNSIGNED BIG INT,tx_packets UNSIGNED BIG INT,rx_errors UNSIGNED BIG INT,tx_errors UNSIGNED BIG INT,client_id integer not null,created_at datetime)",
             "create table client_apply (id integer primary key autoincrement,machine_id varchar(32) not null,client_ip integer not null, status tinyint not null default 0,created_at datetime,updated_at datetime)",
             "alter table client add cpu_temp real",
+        ]);
+
+        sqls.insert(7, vec![
+            "alter table client add disk_avail integer",
+            "alter table client add disk_total integer",
+            "create table config (id integer primary key autoincrement,pihole_server varchar(255) not null default '', es_server varchar(255) not null default '',k8s_server varchar(255) not null default '', created_at datetime, updated_at datetime)",
         ]);
 
         for key in 1..=sqls.len() {

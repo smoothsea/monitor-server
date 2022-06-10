@@ -367,6 +367,8 @@ pub struct StatisticsRow
     ssh_username: Option<String>,
     ssh_password: Option<String>,
     cpu_temp: Option<f64>,
+    disk_avail: Option<i64>,
+    disk_total: Option<i64>,
 }
 
 pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
@@ -376,7 +378,8 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
         let sql = "select client.id,client.client_ip,client.name,client.is_online,client.last_online_time,client.is_enable,client.created_at,client.uptime,client.boot_time,
             cpu.cpu_user,cpu.cpu_system,cpu.cpu_nice,cpu.cpu_idle,memory.memory_free,memory.memory_total,
             client.system_version,client.package_manager_update_count,
-            ssh_address,ssh_username,ssh_password,cpu_temp
+            ssh_address,ssh_username,ssh_password,cpu_temp,
+            disk_avail,disk_total
             from client
             left join (select * from cpu_info as info inner join (select max(id) as mid from cpu_info group by client_id) as least_info on info.id=least_info.mid) as cpu on cpu.client_id=client.id
             left join (select * from memory_info as info inner join (select max(id) as mid from memory_info group by client_id) as least_info on info.id=least_info.mid) as memory on memory.client_id=client.id
@@ -408,6 +411,8 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                             ssh_username: row.get(18)?,
                             ssh_password: row.get(19)?,
                             cpu_temp: row.get(20)?,
+                            disk_avail: row.get(21)?,
+                            disk_total: row.get(22)?,
                         };
                         data.push(item);
                     }
@@ -528,7 +533,7 @@ pub fn create_apply(machine_id: &str, client_ip: &str) -> Result<(), Box<dyn Err
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let apply_expire_date = Local::now().add(duration).format("%Y-%m-%d %H:%M:%S").to_string();
     if let Ok(db) = Db::get_db() {
-        if let Err(_e) = db.conn.query_row::<(), _, _>(&format!("select id from client_apply where (machine_id=?1 and status in ({}, {})) or (machine_id=?1 and status={} and created_at<=?2 )", CLIENT_APPLY_STATUS_PASS, CLIENT_APPLY_STATUS_REJECT, CLIENT_APPLY_STATUS_WAIT), &[machine_id, &apply_expire_date], |_row| {
+        if let Err(_e) = db.conn.query_row::<(), _, _>(&format!("select id from client_apply where (machine_id=?1 and client_ip='{}' and status in ({}, {})) or (machine_id=?1 and client_ip='{}' and status={} and created_at<=?2 )", client_ip, CLIENT_APPLY_STATUS_PASS, CLIENT_APPLY_STATUS_REJECT, client_ip, CLIENT_APPLY_STATUS_WAIT), &[machine_id, &apply_expire_date], |_row| {
             Ok(())
         }) {
             if let Err(_e) = db.conn.execute(&format!("insert into client_apply (machine_id, client_ip, status, created_at) values (?1, ?2, {}, ?3)", CLIENT_APPLY_STATUS_WAIT), &[machine_id, client_ip, &now]) {
@@ -635,4 +640,61 @@ pub fn reject_apply(id: u32) -> Result<(), Box<dyn Error>>
     } else {
         Err("数据库连接错误")?
     }
+}
+
+//  Setting
+#[derive(Serialize,Debug)]
+pub struct SettingRow
+{
+    pub pihole_server: String,
+    pub es_server: String,
+    pub k8s_server: String,
+}
+
+pub fn get_setting() -> Result<SettingRow, Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        let sql = format!("select pihole_server,es_server,k8s_server from config limit 1");
+        match db.conn.query_row(&sql, NO_PARAMS, |row| Ok(SettingRow{
+            pihole_server: row.get(0)?,
+            es_server: row.get(1)?,
+            k8s_server: row.get(2)?,
+        })) {
+            Ok(data) => {
+                return Ok(data);
+            },
+            Err(_e) => {
+                println!("{:?}", _e);
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+
+pub fn save_setting(pihole_server: &str, es_server: &str, k8s_server: &str) -> Result<(), Box<dyn Error>>
+{
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    if let Ok(db) = Db::get_db() {
+        let sql = format!("select id from config limit 1");
+        match db.conn.query_row::<i64, _, _>(&sql, NO_PARAMS, |row| row.get(0)) {
+            Ok(id) => {
+                if let Err(_e) = db.conn.execute(&format!("update config set pihole_server=?1,es_server=?2,k8s_server=?3,updated_at=?4 where id={}", id), &[pihole_server, es_server, k8s_server, &now]) {
+                    Err("保存失败")?;
+                }
+            },
+            Err(_e) => {
+                if let Err(_e) = db.conn.execute(&format!("insert into config (pihole_server, es_server, k8s_server, created_at, updated_at) values (?1, ?2, ?3, ?4, ?5)"), &[pihole_server, es_server, k8s_server, &now, &now]) {
+                    Err("保存失败")?;
+                }
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Ok(());
 }

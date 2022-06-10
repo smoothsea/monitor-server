@@ -1,6 +1,9 @@
 <html>
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Statistics</title>
+    <link rel="shortcut icon" href="/public/monitor.png">
     <style>
         .el-row {
             margin-bottom: 20px;
@@ -203,6 +206,7 @@
             <el-menu-item index="3">内存</el-menu-item>
             <el-menu-item index="4">网络</el-menu-item>
             <el-menu-item index="5" id="terminal-index">Terminal</el-menu-item>
+            <el-menu-item index="6">设置</el-menu-item>
         </el-menu>
         <div class="line"></div>
 
@@ -219,6 +223,8 @@
                     <el-table-column prop="cpu" header-align="left" label="cpu" width="100px">
                     </el-table-column>
                     <el-table-column prop="memory" header-align="left" label="内存" width="210px">
+                    </el-table-column>
+                    <el-table-column prop="disk" header-align="left" label="磁盘" width="210px">
                     </el-table-column>
                     <el-table-column header-align="left" label="包管理器" width="200px">
                         <template slot-scope="scope">
@@ -394,6 +400,31 @@
               </div>
           </div>
         </div>
+
+        <div class="submenu" v-if="activeIndex==6">
+            <el-row>
+              <el-col :span="24">
+                <div class="grid-content bg-purple-dark">
+                  <el-form ref="setting_form" :model="setting_form" label-width="200px"
+                  label-position="left" size="small">
+                      <el-form-item label="Pilehole服务器地址">
+                        <el-input v-model="setting_form.pihole_server" style="width:30%"></el-input>
+                      </el-form-item>
+                      <el-form-item label="Elastic服务器地址">
+                        <el-input v-model="setting_form.es_server" style="width:30%"></el-input>
+                      </el-form-item>
+                      <el-form-item label="K8s服务器地址">
+                        <el-input v-model="setting_form.k8s_server" style="width:30%"></el-input>
+                      </el-form-item>
+                      <el-form-item>
+                        <el-button type="primary" @click="saveSetting">保存</el-button>
+                        <el-button>取消</el-button>
+                      </el-form-item>
+                    </el-form>
+                </div>
+              </el-col>
+            </el-row>
+        </div>
     </div>
     <style>
         .echarts {
@@ -438,6 +469,11 @@
                     ssh_address: "",
                     ssh_username: "",
                     ssh_password: "",
+                },
+                setting_form: {
+                    pihole_server: "",
+                    es_server: "",
+                    k8s_server: "",
                 },
                 // memory
                 memory_chart: {},
@@ -512,6 +548,7 @@
                                 ret[i]["cpu_temp"] = is_online ? ret[i]["cpu_temp"] + "℃" : "";
                                 ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "是" : "否";
                                 ret[i]["cpu"] = is_online ? _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4), 100) + "%" : "";
+                                ret[i]["disk"] = is_online ? _this.getfilesize(ret[i]["disk_total"] - ret[i]["disk_avail"]) + "/" + _this.getfilesize(ret[i]["disk_total"]) + " ( " + _this.tofixed((((ret[i]["disk_total"] - ret[i]["disk_avail"]) / ret[i]["disk_total"]) * 100), 2) + "% )" : "";
                                 ret[i]["memory"] = is_online ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
                                 ret[i]["package_manager"] = is_online && ret[i]["package_manager_update_count"] ? ret[i]["package_manager_update_count"] + " updates avaliable" : "";
                             }
@@ -556,6 +593,26 @@
                                 if (ret.ok) {
                                     _this.getData();
                                     _this.edit_pop = false;
+                                } else {
+                                    _this.$message({
+                                        type: 'error',
+                                        message: ret.message
+                                    });
+                                }
+                            }
+                        })
+                },
+                saveSetting: function () {
+                    var _this = this;
+                    axios.post("/save_setting", this.toFormData(this.setting_form, ["pihole_server", "es_server", "k8s_server"]))
+                        .then(function (ret) {
+                            if (ret) {
+                                ret = ret.data;
+                                if (ret.ok) {
+                                    _this.$message({
+                                        type: 'success',
+                                        message: "保存成功"
+                                    });
                                 } else {
                                     _this.$message({
                                         type: 'error',
@@ -928,6 +985,14 @@
                         }
                     });
                   },
+                getSetting: function () {
+                    var _this = this;
+                    return axios.post("/get_setting").then(function (ret) {
+                        if (ret.status) {
+                            _this.setting_form = ret.data;
+                        }
+                    });
+                  },
                 passApply: function (id) {
                     var _this = this;
                     axios.post("/pass_apply", "id=" + id)
@@ -1274,6 +1339,10 @@
                             call()();
                             _this.intervals.push(setInterval(call(), 5000));    
                         }
+                    }
+
+                    if (this.activeIndex == 6) {
+                      _this.getSetting();
                     }
                 },
                 bytesToSize: function(bytes) {
