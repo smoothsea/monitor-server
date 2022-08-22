@@ -1292,7 +1292,7 @@
                     var _this = this;
                     return axios.post("/get_pihole_statistics").then(function (ret) {
                         _this.pihole_loading = false;
-                        if (ret.status) {
+                        if (ret.status == 1) {
                           _this.pihole_status = true;
                           var data = ret.data.data;
                           if (data.domain_list.top_queries) {
