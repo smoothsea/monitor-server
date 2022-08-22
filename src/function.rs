@@ -5,14 +5,14 @@ use rand::Rng;
 use crate::model::clean_data as clean;
 
 #[derive(Serialize)]
-pub struct Res {
+pub struct Res<T> {
     ok: u8,
     message: Option<String>,
-    data: Option<Vec<String>>,
+    data: Option<T>,
 }
 
-impl Res {
-    pub fn ok(message: Option<String>, data: Option<Vec<String>>) -> Json<Res> {
+impl <T:Serialize>Res<T> {
+    pub fn ok(message: Option<String>, data: Option<T>) -> Json<Res::<T>> {
         Json(Res {
             ok: 1,
             message,
@@ -20,7 +20,7 @@ impl Res {
         })
     }
 
-    pub fn error(message: Option<String>) -> Json<Res> {
+    pub fn error(message: Option<String>) -> Json<Res::<T>> {
         Json(Res {
             ok: 0,
             message,

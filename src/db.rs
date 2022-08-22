@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:i64 = 7;
+    const CURRENT_VESION:i64 = 8;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -92,6 +92,10 @@ impl Db {
             "alter table client add disk_avail integer",
             "alter table client add disk_total integer",
             "create table config (id integer primary key autoincrement,pihole_server varchar(255) not null default '', es_server varchar(255) not null default '',k8s_server varchar(255) not null default '', created_at datetime, updated_at datetime)",
+        ]);
+
+        sqls.insert(8, vec![
+            "alter table config add pihole_web_password varchar(255)",
         ]);
 
         for key in 1..=sqls.len() {

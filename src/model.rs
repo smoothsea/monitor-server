@@ -1,7 +1,8 @@
 use md5;
 use regex::Regex;
+use ssh2::DisconnectCode::ProtocolVersionNotSupported;
 use crate::db::Db;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::error::Error;
 use rusqlite::NO_PARAMS;
 use core::ops::{Sub, Add};
@@ -647,6 +648,7 @@ pub fn reject_apply(id: u32) -> Result<(), Box<dyn Error>>
 pub struct SettingRow
 {
     pub pihole_server: String,
+    pub pihole_web_password: String,
     pub es_server: String,
     pub k8s_server: String,
 }
@@ -654,11 +656,12 @@ pub struct SettingRow
 pub fn get_setting() -> Result<SettingRow, Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
-        let sql = format!("select pihole_server,es_server,k8s_server from config limit 1");
+        let sql = format!("select pihole_server,pihole_web_password,es_server,k8s_server from config limit 1");
         match db.conn.query_row(&sql, NO_PARAMS, |row| Ok(SettingRow{
             pihole_server: row.get(0)?,
-            es_server: row.get(1)?,
-            k8s_server: row.get(2)?,
+            pihole_web_password: row.get(1)?,
+            es_server: row.get(2)?,
+            k8s_server: row.get(3)?,
         })) {
             Ok(data) => {
                 return Ok(data);
@@ -675,19 +678,20 @@ pub fn get_setting() -> Result<SettingRow, Box<dyn Error>>
     return Err("")?;
 }
 
-pub fn save_setting(pihole_server: &str, es_server: &str, k8s_server: &str) -> Result<(), Box<dyn Error>>
+pub fn save_setting(pihole_server: &str, pihole_web_password: &str, es_server: &str, k8s_server: &str) -> Result<(), Box<dyn Error>>
 {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     if let Ok(db) = Db::get_db() {
         let sql = format!("select id from config limit 1");
         match db.conn.query_row::<i64, _, _>(&sql, NO_PARAMS, |row| row.get(0)) {
             Ok(id) => {
-                if let Err(_e) = db.conn.execute(&format!("update config set pihole_server=?1,es_server=?2,k8s_server=?3,updated_at=?4 where id={}", id), &[pihole_server, es_server, k8s_server, &now]) {
+                if let Err(_e) = db.conn.execute(&format!("update config set pihole_server=?1,es_server=?2,k8s_server=?3,updated_at=?4,pihole_web_password=?5 where id={}", id), &[pihole_server, es_server, k8s_server, &now, pihole_web_password]) {
+                    println!("{:?}", _e);
                     Err("保存失败")?;
                 }
             },
             Err(_e) => {
-                if let Err(_e) = db.conn.execute(&format!("insert into config (pihole_server, es_server, k8s_server, created_at, updated_at) values (?1, ?2, ?3, ?4, ?5)"), &[pihole_server, es_server, k8s_server, &now, &now]) {
+                if let Err(_e) = db.conn.execute(&format!("insert into config (pihole_server, es_server, k8s_server, created_at, updated_at, pihole_web_password) values (?1, ?2, ?3, ?4, ?5, ?6)"), &[pihole_server, es_server, k8s_server, &now, &now, pihole_web_password]) {
                     Err("保存失败")?;
                 }
             }
@@ -697,4 +701,44 @@ pub fn save_setting(pihole_server: &str, es_server: &str, k8s_server: &str) -> R
     }    
 
     return Ok(());
+}
+
+// Pihole
+#[derive(Serialize,Deserialize,Debug)]
+struct PiholeDomainRow {
+    domain: String,
+    count: u32,
+}
+
+#[derive(Serialize,Deserialize,Debug)]
+struct PiholeSummaryRet {
+    domains_being_blocked: u32,
+    dns_queries_today: u32,
+    ads_blocked_today: u32,
+    unique_clients: u32,
+}
+
+#[derive(Serialize,Deserialize,Debug)]
+struct PiholeTopListRet {
+    top_queries: HashMap<String, u32>,
+}
+
+#[derive(Serialize,Debug)]
+pub struct PiholeData {
+    statistics: Option<PiholeSummaryRet>,
+    domain_list: Option<PiholeTopListRet>,
+}
+
+pub fn get_pihole_statistics() -> Result<PiholeData, Box<dyn Error>> {
+    let setting = get_setting()?;
+    if &setting.pihole_server != "" {
+        let statistics:Option<PiholeSummaryRet> = reqwest::blocking::get(format!("{}/admin/api.php", setting.pihole_server))?.json().ok();
+        let domain_list:Option<PiholeTopListRet> = reqwest::blocking::get(format!("{}/admin/api.php?topItems=10&auth={}", setting.pihole_server, setting.pihole_web_password))?.json().ok();
+        return Ok(PiholeData {
+            statistics,
+            domain_list,
+        })
+    }
+
+    Err("未配置Pihole相关信息")?
 }

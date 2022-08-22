@@ -186,6 +186,11 @@
         #shell-input input {
             outline: none;
         } 
+
+        .pi-hole-card {
+          color: white!important
+        }
+
         [v-cloak] {
             display:none;
         }
@@ -201,6 +206,7 @@
 <body>
     <div id="app" v-clock>
         <el-menu :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect" v-show="tab_show">
+            <el-menu-item index="0">看板</el-menu-item>
             <el-menu-item index="1">客户端</el-menu-item>
             <el-menu-item index="2">CPU</el-menu-item>
             <el-menu-item index="3">内存</el-menu-item>
@@ -209,6 +215,63 @@
             <el-menu-item index="6">设置</el-menu-item>
         </el-menu>
         <div class="line"></div>
+
+        <div class="submenu" v-if="activeIndex==0">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-card class="box-card" v-loading="pihole_loading">
+                <template v-if="!pihole_status">
+                    {[ pihole_message ]}
+                </template>
+                
+                <template v-if="pihole_status">
+                <el-row :gutter="20">
+                  <el-col :span="6">
+                    <el-card class="box-card pi-hole-card" shadow="hover" style="background-color:#67C23A">
+                      <p>总请求 ({[ pihole_data.statistics.unique_clients ]} 客户)</p>
+                      <p>{[ pihole_data.statistics.dns_queries_today ]}</p>
+                    </el-card>
+                  </el-col>
+
+                  <el-col :span="6">
+                    <el-card class="box-card pi-hole-card" shadow="hover" style="background-color:#E6A23C">
+                      <p>拦截请求</p>
+                      <p>{[ pihole_data.statistics.ads_blocked_today ]}</p>
+                    </el-card>
+                  </el-col>
+
+                  <el-col :span="6">
+                    <el-card class="box-card pi-hole-card" shadow="hover" style="background-color:#F56C6C">
+                      <p>拦截名单</p>
+                      <p>{[ pihole_data.statistics.domains_being_blocked ]}</p>
+                    </el-card>
+                  </el-col>
+                </el-row>
+
+                <el-row>
+                  <el-col :span="24">
+                    <el-table
+                      :data="pihole_data.domain_list.top_queries"
+                      border
+                      style="width: 100%">
+                      <el-table-column
+                        prop="domain"
+                        label="域名">
+                      </el-table-column>
+                      <el-table-column
+                        prop="count"
+                        label="次数">
+                      </el-table-column>
+                    </el-table>
+                  </el-col>
+                </el-row>
+                </template>
+              </el-card>
+            </el-col>
+            <el-col :span="6"></el-col>
+          </el-row>
+
+        </div>
 
         <div v-show="activeIndex==1" class="submenu">
             <el-row type="flex" justify="center">
@@ -410,6 +473,9 @@
                       <el-form-item label="Pilehole服务器地址">
                         <el-input v-model="setting_form.pihole_server" style="width:30%"></el-input>
                       </el-form-item>
+                      <el-form-item label="Pilehole webpassword">
+                        <el-input v-model="setting_form.pihole_web_password" style="width:30%"></el-input>
+                      </el-form-item>
                       <el-form-item label="Elastic服务器地址">
                         <el-input v-model="setting_form.es_server" style="width:30%"></el-input>
                       </el-form-item>
@@ -443,9 +509,10 @@
         var APPLY_WAIT_TXT = "待审核";
         var app = new Vue({
             el: '#app',
+            delimiters: ['{[', ']}'],
             data: {
                 tab_show: false,
-                activeIndex: 1,
+                activeIndex: 0,
                 intervals: [],
                 // client
                 user: "",
@@ -472,6 +539,7 @@
                 },
                 setting_form: {
                     pihole_server: "",
+                    pihole_web_password: "",
                     es_server: "",
                     k8s_server: "",
                 },
@@ -511,6 +579,21 @@
                 terminal_prompt: "",
                 history_position: 0,
                 history_commands: [],
+                // pihole
+                pihole_status: false,
+                pihole_message: "请先设置Pihole相关配置",
+                pihole_loading: true,
+                pihole_data: {
+                  domain_list: {
+                    top_queries: []
+                  },
+                  statistics: {
+                    ads_blocked_today: 0,
+                    dns_queries_today: 0,
+                    domains_being_blocked: 0,
+                    unique_clients: 0,
+                  } 
+                } 
             },
             methods: {
                 // client
@@ -604,7 +687,7 @@
                 },
                 saveSetting: function () {
                     var _this = this;
-                    axios.post("/save_setting", this.toFormData(this.setting_form, ["pihole_server", "es_server", "k8s_server"]))
+                    axios.post("/save_setting", this.toFormData(this.setting_form, ["pihole_server", "pihole_web_password", "es_server", "k8s_server"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;
@@ -1204,6 +1287,28 @@
                         document.getElementById("shell-cmd").focus();
                     }
                 },
+                // pihole 
+                getPiholeStatistics: function () {
+                    var _this = this;
+                    return axios.post("/get_pihole_statistics").then(function (ret) {
+                        _this.pihole_loading = false;
+                        if (ret.status) {
+                          _this.pihole_status = true;
+                          var data = ret.data.data;
+                          if (data.domain_list.top_queries) {
+                            var t = [];
+                            for (var i in data.domain_list.top_queries) {
+                              t.push({domain: i, count: data.domain_list.top_queries[i]});
+                            }
+                            data.domain_list.top_queries = t;
+                          }
+                          _this.pihole_data = data;
+                        } else {
+                          _this.pihole_status = false;
+                          _this.pihole_message = ret.data.message;
+                        }
+                    });
+                },
                 // common
                 escapeHtml: function (string) {
                     return string
@@ -1312,6 +1417,7 @@
                 initTabInterval: function () {
                     var _this = this;
                     var map = {
+                      0: [this.getPiholeStatistics],
                       1: [this.getData, this.getClientApplyCount],
                       2: [this.getCpuChart],
                       3: [this.getMemoryChart],

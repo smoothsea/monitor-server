@@ -23,7 +23,7 @@ use rocket::http::{Cookie, Cookies};
 use rocket_contrib::serve::StaticFiles;
 use rocket_contrib::templates::Template;
 use rocket::request::{self, Request, FromRequest, Form};
-use model::{ByteChartLine, ClientApplyRow, CpuChartLine, MemoryChartLine, SettingRow, StatisticsRow, TaskRow, add_client as add_client_operation, cancel_task as cancel_task_operation, check_login, create_apply, delete_client as delete_client_operation, edit_client as edit_client_operation, get_byte_chart as get_byte_chart_m, get_client, get_client_applys, get_client_statistics, get_cpu_chart as get_cpu_chart_m, get_memory_chart as get_memory_chart_m, get_setting as get_setting_m, get_tasks, pass_apply as pass_apply_operation, reject_apply as reject_apply_operation, save_setting as save_setting_m, set_task as set_operation, str_to_chart_duration};
+use model::{ByteChartLine, ClientApplyRow, CpuChartLine, MemoryChartLine, SettingRow, StatisticsRow, TaskRow, add_client as add_client_operation, cancel_task as cancel_task_operation, check_login, create_apply, delete_client as delete_client_operation, edit_client as edit_client_operation, get_byte_chart as get_byte_chart_m, get_client, get_client_applys, get_client_statistics, get_cpu_chart as get_cpu_chart_m, get_memory_chart as get_memory_chart_m, get_setting as get_setting_m, get_tasks, pass_apply as pass_apply_operation, reject_apply as reject_apply_operation, save_setting as save_setting_m, set_task as set_operation, str_to_chart_duration, get_pihole_statistics as get_pihole_statistics_m, PiholeData};
 
 #[macro_export]
 macro_rules! fatal {
@@ -188,7 +188,7 @@ struct NetworkStat {
 
 
 #[post("/set_status", data="<status>")]
-fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res>{
+fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res::<Vec<String>>>{
     let client_id = client.0;
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let db:Db;
@@ -257,7 +257,7 @@ struct LoginParams {
 }
  
 #[post("/login", data="<params>")]
-fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Json<Res>{
+fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Json<Res::<Vec<String>>>{
     match check_login(&params.username, &params.password) {
         Ok(id) => {
             let mut cookie = Cookie::build("user_id", id.to_string()).finish();
@@ -292,7 +292,7 @@ struct DeleteClientParams {
 }
 
 #[post("/delete_client", data="<params>")]
-fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res> 
+fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res::<Vec<String>>> 
 {
     match delete_client_operation(params.client_id) {
         Ok(_d) => {
@@ -314,7 +314,7 @@ struct AddClientParams {
 }
 
 #[post("/add_client", data="<params>")]
-fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res> 
+fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res::<Vec<String>>> 
 {
     match add_client_operation(&params.name, &params.client_ip, 
         &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
@@ -339,7 +339,7 @@ struct EditClientParams {
 }
 
 #[post("/edit_client", data="<params>")]
-fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res> 
+fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res::<Vec<String>>> 
 {
     match edit_client_operation(params.client_id, &params.name, &params.client_ip, params.is_enable, 
         &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
@@ -416,7 +416,7 @@ struct CancelTaskParams {
 }
 
 #[post("/cancel_task", data="<params>")]
-fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res> 
+fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res::<Vec<String>>> 
 {
     match cancel_task_operation(params.task_id) {
         Ok(_d) => {
@@ -429,7 +429,7 @@ fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res>
 }
 
 #[post("/get_task")]
-fn get_task(client:Client) -> Json<Res>{
+fn get_task(client:Client) -> Json<Res::<Vec<String>>>{
     let client_id = client.0;
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let db:Db;
@@ -470,7 +470,7 @@ struct OprateParams {
 }
 
 #[post("/operate", data="<params>")]
-fn operate(_admin: Admin, params:Form<OprateParams>) -> Json<Res> {
+fn operate(_admin: Admin, params:Form<OprateParams>) -> Json<Res::<Vec<String>>> {
     let operation = params.operation.clone();
     match set_operation(params.client_id, operation) {
         Ok(_d) => {
@@ -489,7 +489,7 @@ struct TaskParams {
 }
 
 #[post("/set_task", data="<task>")]
-fn set_task(task: Json<TaskParams>) -> Json<Res>{
+fn set_task(task: Json<TaskParams>) -> Json<Res::<Vec<String>>>{
     let task_type = task.task_type.clone();
     match set_operation(task.client_id, task_type) {
         Ok(_d) => {
@@ -518,7 +518,7 @@ struct ApplyOperationParam {
 }
 
 #[post("/pass_apply", data="<params>")]
-fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
+fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res::<Vec<String>>> 
 {
     match pass_apply_operation(params.id) {
         Ok(_d) => {
@@ -531,7 +531,7 @@ fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res>
 }
 
 #[post("/reject_apply", data="<params>")]
-fn reject_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res> 
+fn reject_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res::<Vec<String>>> 
 {
     match reject_apply_operation(params.id) {
         Ok(_d) => {
@@ -550,7 +550,7 @@ struct ConnectSshClientParams {
 }
 
 #[post("/connect_ssh_client", data="<params>")]
-fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, session: State<SshSession>) -> Json<Res>
+fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, session: State<SshSession>) -> Json<Res::<Vec<String>>>
 {
     let client;
     match get_client(params.client_id) {
@@ -601,7 +601,7 @@ struct SshCommandParams {
 }
 
 #[post("/run_ssh_command", data="<params>")]
-fn run_ssh_command(_admin: Admin, params:Form<SshCommandParams>, session: State<SshSession>) -> Json<Res>
+fn run_ssh_command(_admin: Admin, params:Form<SshCommandParams>, session: State<SshSession>) -> Json<Res::<Vec<String>>>
 {
     let client_id = session.client_id.lock().unwrap(); 
     let s = session.session.lock().unwrap();
@@ -645,6 +645,7 @@ fn get_setting(_admin: Admin) -> Json<SettingRow>
     } else {
         Json(SettingRow {
             pihole_server: "".to_string(),
+            pihole_web_password: "".to_string(),
             es_server: "".to_string(),
             k8s_server: "".to_string(),
         })
@@ -654,16 +655,31 @@ fn get_setting(_admin: Admin) -> Json<SettingRow>
 #[derive(FromForm, Debug)]
 struct SaveSettingParam {
     pihole_server: String,
+    pihole_web_password: String,
     es_server: String,
     k8s_server: String,
 }
 
 #[post("/save_setting", data="<params>")]
-fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res> 
+fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res::<Vec<String>>> 
 {
-    match save_setting_m(&params.pihole_server, &params.es_server, &params.k8s_server) {
+    match save_setting_m(&params.pihole_server, &params.pihole_web_password, &params.es_server, &params.k8s_server) {
         Ok(_d) => {
             return Res::ok(None, None);
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+// Pilehole 
+#[post("/get_pihole_statistics")]
+fn get_pihole_statistics(_admin: Admin) -> Json<Res::<PiholeData>>
+{
+    match get_pihole_statistics_m() {
+        Ok(d) => {
+            return Res::ok(None, Some(d));
         },
         Err(e) => {
             return Res::error(Some(e.to_string())); 
@@ -697,6 +713,7 @@ fn main() {
          connect_ssh_client,run_ssh_command,
          client_applys,pass_apply,reject_apply,
          get_setting, save_setting,
+         get_pihole_statistics,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)
