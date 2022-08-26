@@ -23,7 +23,6 @@ use rocket::http::{Cookie, Cookies};
 use rocket_contrib::serve::StaticFiles;
 use rocket_contrib::templates::Template;
 use rocket::request::{self, Request, FromRequest, Form};
-use model::{ByteChartLine, ClientApplyRow, CpuChartLine, MemoryChartLine, SettingRow, StatisticsRow, TaskRow, add_client as add_client_operation, cancel_task as cancel_task_operation, check_login, create_apply, delete_client as delete_client_operation, edit_client as edit_client_operation, get_byte_chart as get_byte_chart_m, get_client, get_client_applys, get_client_statistics, get_cpu_chart as get_cpu_chart_m, get_memory_chart as get_memory_chart_m, get_setting as get_setting_m, get_tasks, pass_apply as pass_apply_operation, reject_apply as reject_apply_operation, save_setting as save_setting_m, set_task as set_operation, str_to_chart_duration, get_pihole_statistics as get_pihole_statistics_m, PiholeData};
 
 #[macro_export]
 macro_rules! fatal {
@@ -71,7 +70,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
                 Err(_e) => {
                     // 
                     if machine_id != "" {
-                        create_apply(machine_id, &remote_ip).unwrap_or(());
+                        model::create_apply(machine_id, &remote_ip).unwrap_or(());
                     }
                     Outcome::Failure((Status::BadRequest, ClientError::NotPermit))
                 }
@@ -258,7 +257,7 @@ struct LoginParams {
  
 #[post("/login", data="<params>")]
 fn do_login(params: Form<LoginParams>, mut cookies: Cookies) -> Json<Res::<Vec<String>>>{
-    match check_login(&params.username, &params.password) {
+    match model::check_login(&params.username, &params.password) {
         Ok(id) => {
             let mut cookie = Cookie::build("user_id", id.to_string()).finish();
             cookie.set_max_age(Duration::days(30));
@@ -278,8 +277,8 @@ fn statistics(_admin: Admin) -> Template{
 }
 
 #[post("/get_statistics")]
-fn get_statistics(_admin: Admin) -> Json<Vec<StatisticsRow>>{
-    if let Ok(ret) = get_client_statistics() {
+fn get_statistics(_admin: Admin) -> Json<Vec<model::StatisticsRow>>{
+    if let Ok(ret) = model::get_client_statistics() {
         Json(ret)     
     } else {
         Json(vec!())
@@ -294,7 +293,7 @@ struct DeleteClientParams {
 #[post("/delete_client", data="<params>")]
 fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res::<Vec<String>>> 
 {
-    match delete_client_operation(params.client_id) {
+    match model::delete_client(params.client_id) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -316,7 +315,7 @@ struct AddClientParams {
 #[post("/add_client", data="<params>")]
 fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res::<Vec<String>>> 
 {
-    match add_client_operation(&params.name, &params.client_ip, 
+    match model::add_client(&params.name, &params.client_ip, 
         &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
@@ -341,7 +340,7 @@ struct EditClientParams {
 #[post("/edit_client", data="<params>")]
 fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res::<Vec<String>>> 
 {
-    match edit_client_operation(params.client_id, &params.name, &params.client_ip, params.is_enable, 
+    match model::edit_client(params.client_id, &params.name, &params.client_ip, params.is_enable, 
         &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
@@ -354,8 +353,8 @@ fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res::<Vec<S
 
 // Memory
 #[post("/get_memory_chart")]
-fn get_memory_chart(_admin: Admin) -> Json<Vec<MemoryChartLine>>{
-    if let Ok(ret) = get_memory_chart_m() {
+fn get_memory_chart(_admin: Admin) -> Json<Vec<model::MemoryChartLine>>{
+    if let Ok(ret) = model::get_memory_chart() {
         Json(ret)     
     } else {
         Json(vec!())
@@ -364,8 +363,8 @@ fn get_memory_chart(_admin: Admin) -> Json<Vec<MemoryChartLine>>{
 
 // Cpu
 #[post("/get_cpu_chart")]
-fn get_cpu_chart(_admin: Admin) -> Json<Vec<CpuChartLine>>{
-    if let Ok(ret) = get_cpu_chart_m() {
+fn get_cpu_chart(_admin: Admin) -> Json<Vec<model::CpuChartLine>>{
+    if let Ok(ret) = model::get_cpu_chart() {
         Json(ret)     
     } else {
         Json(vec!())
@@ -380,14 +379,14 @@ struct ByteChartParams {
 }
 
 #[post("/get_byte_chart", data="<params>")]
-fn get_byte_chart(params: Json<ByteChartParams>, _admin: Admin) -> Json<Vec<ByteChartLine>>{
-    let duration = match str_to_chart_duration(&params.duration) {
+fn get_byte_chart(params: Json<ByteChartParams>, _admin: Admin) -> Json<Vec<model::ByteChartLine>>{
+    let duration = match model::str_to_chart_duration(&params.duration) {
         Ok(d) => d,
         Err(_e) => {
             return Json(vec!());
         }
     };
-    if let Ok(ret) = get_byte_chart_m(params.direction, duration) {
+    if let Ok(ret) = model::get_byte_chart(params.direction, duration) {
         Json(ret)     
     } else {
         Json(vec!())
@@ -401,9 +400,9 @@ struct TasksParams {
 }
 
 #[post("/tasks", data="<params>")]
-fn tasks(_admin: Admin, params:Form<TasksParams>) -> Json<Vec<TaskRow>>
+fn tasks(_admin: Admin, params:Form<TasksParams>) -> Json<Vec<model::TaskRow>>
 {
-    if let Ok(ret) = get_tasks(params.client_id) {
+    if let Ok(ret) = model::get_tasks(params.client_id) {
         Json(ret)     
     } else {
         Json(vec!())
@@ -418,7 +417,7 @@ struct CancelTaskParams {
 #[post("/cancel_task", data="<params>")]
 fn cancel_task(_admin: Admin, params:Form<CancelTaskParams>) -> Json<Res::<Vec<String>>> 
 {
-    match cancel_task_operation(params.task_id) {
+    match model::cancel_task(params.task_id) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -472,7 +471,7 @@ struct OprateParams {
 #[post("/operate", data="<params>")]
 fn operate(_admin: Admin, params:Form<OprateParams>) -> Json<Res::<Vec<String>>> {
     let operation = params.operation.clone();
-    match set_operation(params.client_id, operation) {
+    match model::set_task(params.client_id, operation) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -491,7 +490,7 @@ struct TaskParams {
 #[post("/set_task", data="<task>")]
 fn set_task(task: Json<TaskParams>) -> Json<Res::<Vec<String>>>{
     let task_type = task.task_type.clone();
-    match set_operation(task.client_id, task_type) {
+    match model::set_task(task.client_id, task_type) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -503,9 +502,9 @@ fn set_task(task: Json<TaskParams>) -> Json<Res::<Vec<String>>>{
 
 // Client apply
 #[post("/client_applys")]
-fn client_applys(_admin: Admin) -> Json<Vec<ClientApplyRow>>
+fn client_applys(_admin: Admin) -> Json<Vec<model::ClientApplyRow>>
 {
-    if let Ok(ret) = get_client_applys() {
+    if let Ok(ret) = model::get_client_applys() {
         Json(ret)     
     } else {
         Json(vec!())
@@ -520,7 +519,7 @@ struct ApplyOperationParam {
 #[post("/pass_apply", data="<params>")]
 fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res::<Vec<String>>> 
 {
-    match pass_apply_operation(params.id) {
+    match model::pass_apply(params.id) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -533,7 +532,7 @@ fn pass_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res::<Vec
 #[post("/reject_apply", data="<params>")]
 fn reject_apply(_admin: Admin, params:Form<ApplyOperationParam>) -> Json<Res::<Vec<String>>> 
 {
-    match reject_apply_operation(params.id) {
+    match model::reject_apply(params.id) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -553,7 +552,7 @@ struct ConnectSshClientParams {
 fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, session: State<SshSession>) -> Json<Res::<Vec<String>>>
 {
     let client;
-    match get_client(params.client_id) {
+    match model::get_client(params.client_id) {
         Ok(c) => client = c,
         Err(_e) => {
             return Res::error(Some("客户错误".to_string())); 
@@ -638,12 +637,12 @@ struct SshSession {
 
 // Setting 
 #[post("/get_setting")]
-fn get_setting(_admin: Admin) -> Json<SettingRow>
+fn get_setting(_admin: Admin) -> Json<model::SettingRow>
 {
-    if let Ok(ret) = get_setting_m() {
+    if let Ok(ret) = model::get_setting() {
         Json(ret)     
     } else {
-        Json(SettingRow {
+        Json(model::SettingRow {
             pihole_server: "".to_string(),
             pihole_web_password: "".to_string(),
             es_server: "".to_string(),
@@ -663,7 +662,7 @@ struct SaveSettingParam {
 #[post("/save_setting", data="<params>")]
 fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res::<Vec<String>>> 
 {
-    match save_setting_m(&params.pihole_server, &params.pihole_web_password, &params.es_server, &params.k8s_server) {
+    match model::save_setting(&params.pihole_server, &params.pihole_web_password, &params.es_server, &params.k8s_server) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -675,9 +674,9 @@ fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res::<Vec<
 
 // Pilehole 
 #[post("/get_pihole_statistics")]
-fn get_pihole_statistics(_admin: Admin) -> Json<Res::<PiholeData>>
+fn get_pihole_statistics(_admin: Admin) -> Json<Res::<model::PiholeData>>
 {
-    match get_pihole_statistics_m() {
+    match model::get_pihole_statistics() {
         Ok(d) => {
             return Res::ok(None, Some(d));
         },
