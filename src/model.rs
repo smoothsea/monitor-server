@@ -1,14 +1,17 @@
 use md5;
 use regex::Regex;
-use ssh2::DisconnectCode::ProtocolVersionNotSupported;
 use crate::db::Db;
+use reqwest::header;
 use serde::{Serialize, Deserialize};
+use k8s_openapi::http;
 use std::error::Error;
 use rusqlite::NO_PARAMS;
 use core::ops::{Sub, Add};
 use chrono::{Local, Duration};
 use std::collections::HashMap;
 use chrono::naive::NaiveDateTime;
+use k8s_openapi::api::core::v1 as api;
+use ssh2::DisconnectCode::ProtocolVersionNotSupported;
 
 // clean statistics data
 pub fn clean_data(save_days: i64) -> Result<(), Box<dyn Error>> {
@@ -651,17 +654,19 @@ pub struct SettingRow
     pub pihole_web_password: String,
     pub es_server: String,
     pub k8s_server: String,
+    pub k8s_auth_token: String,
 }
 
 pub fn get_setting() -> Result<SettingRow, Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
-        let sql = format!("select pihole_server,pihole_web_password,es_server,k8s_server from config limit 1");
+        let sql = format!("select pihole_server,pihole_web_password,es_server,k8s_server,k8s_auth_token from config limit 1");
         match db.conn.query_row(&sql, NO_PARAMS, |row| Ok(SettingRow{
             pihole_server: row.get(0)?,
             pihole_web_password: row.get(1)?,
             es_server: row.get(2)?,
             k8s_server: row.get(3)?,
+            k8s_auth_token: row.get(4)?,
         })) {
             Ok(data) => {
                 return Ok(data);
@@ -678,20 +683,20 @@ pub fn get_setting() -> Result<SettingRow, Box<dyn Error>>
     return Err("")?;
 }
 
-pub fn save_setting(pihole_server: &str, pihole_web_password: &str, es_server: &str, k8s_server: &str) -> Result<(), Box<dyn Error>>
+pub fn save_setting(pihole_server: &str, pihole_web_password: &str, es_server: &str, k8s_server: &str, k8s_auth_token: &str) -> Result<(), Box<dyn Error>>
 {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     if let Ok(db) = Db::get_db() {
         let sql = format!("select id from config limit 1");
         match db.conn.query_row::<i64, _, _>(&sql, NO_PARAMS, |row| row.get(0)) {
             Ok(id) => {
-                if let Err(_e) = db.conn.execute(&format!("update config set pihole_server=?1,es_server=?2,k8s_server=?3,updated_at=?4,pihole_web_password=?5 where id={}", id), &[pihole_server, es_server, k8s_server, &now, pihole_web_password]) {
+                if let Err(_e) = db.conn.execute(&format!("update config set pihole_server=?1,es_server=?2,k8s_server=?3,updated_at=?4,pihole_web_password=?5,k8s_auth_token=?6 where id={}", id), &[pihole_server, es_server, k8s_server, &now, pihole_web_password, k8s_auth_token]) {
                     println!("{:?}", _e);
                     Err("保存失败")?;
                 }
             },
             Err(_e) => {
-                if let Err(_e) = db.conn.execute(&format!("insert into config (pihole_server, es_server, k8s_server, created_at, updated_at, pihole_web_password) values (?1, ?2, ?3, ?4, ?5, ?6)"), &[pihole_server, es_server, k8s_server, &now, &now, pihole_web_password]) {
+                if let Err(_e) = db.conn.execute(&format!("insert into config (pihole_server, es_server, k8s_server, created_at, updated_at, pihole_web_password, k8s_auth_token) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)"), &[pihole_server, es_server, k8s_server, &now, &now, pihole_web_password, k8s_auth_token]) {
                     Err("保存失败")?;
                 }
             }
@@ -741,4 +746,40 @@ pub fn get_pihole_statistics() -> Result<PiholeData, Box<dyn Error>> {
     }
 
     Err("未配置Pihole相关信息")?
+}
+
+#[derive(Serialize, Debug)]
+pub struct K8sListData {
+    list: serde_json::value::Value,
+}
+
+pub fn get_k8s_list(t: u8) -> Result<K8sListData, Box<dyn Error>> {
+    println!("{}", t);
+    let (mut request, _) = api::Pod::list("default", Default::default())?;
+    if t == 1 {
+        (request, _) = api::Service::list("default", Default::default())?;
+    } else if t == 2 {
+        (request, _) = api::Node::list(Default::default())?;
+    }
+    println!("{:?}", request);
+    let list:serde_json::value::Value = request_k8s(request)?.json()?;
+    Ok(K8sListData {
+        list
+    })
+}
+
+fn request_k8s(req: http::Request<Vec<u8>>) -> Result<reqwest::blocking::Response, Box<dyn Error>> {
+    let setting = get_setting()?;
+
+    if &setting.k8s_server != "" && &setting.k8s_auth_token != "" {
+        let mut headers = header::HeaderMap::new();
+        headers.insert("Authorization", header::HeaderValue::from_str(&format!("Bearer {}", &setting.k8s_auth_token))?);
+        let client = reqwest::blocking::Client::builder()
+            .default_headers(headers)
+            .danger_accept_invalid_certs(true)
+            .build()?;
+        return Ok(client.get(&format!("{}{}", &setting.k8s_server, req.uri())).send()?);
+    }
+
+    Err("未配置K8s相关信息")?
 }

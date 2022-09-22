@@ -268,7 +268,87 @@
                 </template>
               </el-card>
             </el-col>
-            <el-col :span="6"></el-col>
+            <el-col :span="12">
+              <el-card class="box-card" v-loading="k8s_loading">
+                <template v-if="!k8s_status">
+                    {[ k8s_message ]}
+                </template>
+
+                <template v-if="k8s_status">
+                  <el-tabs type="border-card" v-model="k8s_index" @tab-click="handleK8sClick">
+                    <el-tab-pane label="Pod" name="0">
+                            <el-table
+                              :data="k8s_list.items"
+                              style="width: 100%">
+                              <el-table-column
+                                prop="metadata.generateName"
+                                label="名称"
+                              >
+                              </el-table-column>
+                              <el-table-column
+                                prop="status.phase"
+                                label="状态"
+                              >
+                              </el-table-column>
+                              <el-table-column
+                                prop="status.startTime"
+                                label="启动时间">
+                              </el-table-column>
+                              <el-table-column
+                                prop="spec.nodeName"
+                                label="Node">
+                              </el-table-column>
+                            </el-table>
+                    </el-tab-pane>
+                    <el-tab-pane label="Service" name="1">
+                            <el-table
+                              :data="k8s_list.items"
+                              style="width: 100%">
+                              <el-table-column
+                                prop="metadata.name"
+                                label="名称"
+                              >
+                              </el-table-column>
+                              <el-table-column
+                                prop="spec.type"
+                                label="Type"
+                              >
+                              </el-table-column>
+                              <el-table-column
+                                prop="JSON.stringify(spec.ports)"
+                                :formatter="formatK8sServicePort"
+                                label="端口">
+                              </el-table-column>
+                            </el-table>
+                    </el-tab-pane>
+                    <el-tab-pane label="Node" name="2">
+                            <el-table
+                              :data="k8s_list.items"
+                              style="width: 100%">
+                              <el-table-column
+                                prop="metadata.name"
+                                label="名称"
+                              >
+                              </el-table-column>
+                              <el-table-column
+                                prop="status.conditions.0.lastHeartbeatTime"
+                                label="上次连接时间"
+                              >
+                              </el-table-column>
+                              <el-table-column
+                                prop="metadata.creationTimestamp"
+                                label="创建时间">
+                              </el-table-column>
+                              <el-table-column
+                                prop="status.addresses.0.address"
+                                label="IP">
+                              </el-table-column>
+                            </el-table>
+                    </el-tab-pane>
+                  </el-tabs>
+                </template>
+              </el-card>
+            </el-col>
           </el-row>
 
         </div>
@@ -277,15 +357,15 @@
             <el-row type="flex" justify="center">
                 <el-table :data="list" :row-class-name="tableRowClassName" v-loading="list_loading"
                 :header-cell-style="{height:'20px', 'font-size':'15px'}"
-                :cell-style="{'font-size':'14px'}"
+                :cell-style="cellStyle"
                 empty-text=" ">
                     <el-table-column prop="client_ip" header-align="left" fixed label="客户端ip" width="120px">
                     </el-table-column>
                     <el-table-column prop="name" header-align="left" fixed label="名称" width="200px">
                     </el-table-column>
-                    <el-table-column prop="cpu" header-align="left" label="cpu" width="100px">
+                    <el-table-column prop="cpu" header-align="left" label="cpu" width="100px" sortable>
                     </el-table-column>
-                    <el-table-column prop="memory" header-align="left" label="内存" width="210px">
+                    <el-table-column prop="memory" header-align="left" label="内存" width="210px" sortable>
                     </el-table-column>
                     <el-table-column prop="disk" header-align="left" label="磁盘" width="210px">
                     </el-table-column>
@@ -482,6 +562,9 @@
                       <el-form-item label="K8s服务器地址">
                         <el-input v-model="setting_form.k8s_server" style="width:30%"></el-input>
                       </el-form-item>
+                      <el-form-item label="K8s auth token">
+                        <el-input v-model="setting_form.k8s_auth_token" style="width:50%" type="textarea"></el-input>
+                      </el-form-item>
                       <el-form-item>
                         <el-button type="primary" @click="saveSetting">保存</el-button>
                         <el-button>取消</el-button>
@@ -542,6 +625,7 @@
                     pihole_web_password: "",
                     es_server: "",
                     k8s_server: "",
+                    k8s_auth_token: "",
                 },
                 // memory
                 memory_chart: {},
@@ -555,10 +639,8 @@
                 net_chart_show: false,
                 net_rx_byte_chart: {},
                 net_rx_byte_chart_init: false,
-
                 net_tx_byte_chart: {},
                 net_tx_byte_chart_init: false,
-                
                 // task
                 task_pop: false,
                 task_list_loading: true,
@@ -593,7 +675,13 @@
                     domains_being_blocked: 0,
                     unique_clients: 0,
                   } 
-                } 
+                },
+                // k8s
+                k8s_status: false,
+                k8s_message: "请先设置k8s相关配置",
+                k8s_loading: true,
+                k8s_index: 0,
+                k8s_list: {},
             },
             methods: {
                 // client
@@ -631,8 +719,8 @@
                                 ret[i]["cpu_temp"] = is_online ? ret[i]["cpu_temp"] + "℃" : "";
                                 ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "是" : "否";
                                 ret[i]["cpu"] = is_online ? _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4), 100) + "%" : "";
-                                ret[i]["disk"] = is_online ? _this.getfilesize(ret[i]["disk_total"] - ret[i]["disk_avail"]) + "/" + _this.getfilesize(ret[i]["disk_total"]) + " ( " + _this.tofixed((((ret[i]["disk_total"] - ret[i]["disk_avail"]) / ret[i]["disk_total"]) * 100), 2) + "% )" : "";
-                                ret[i]["memory"] = is_online ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
+                                ret[i]["disk"] = is_online && ret[i]["disk_total"] ? _this.getfilesize(ret[i]["disk_total"] - ret[i]["disk_avail"]) + "/" + _this.getfilesize(ret[i]["disk_total"]) + " ( " + _this.tofixed((((ret[i]["disk_total"] - ret[i]["disk_avail"]) / ret[i]["disk_total"]) * 100), 2) + "% )" : "";
+                                ret[i]["memory"] = is_online && ret[i]["memory_total"] ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
                                 ret[i]["package_manager"] = is_online && ret[i]["package_manager_update_count"] ? ret[i]["package_manager_update_count"] + " updates avaliable" : "";
                             }
                             _this.list = ret;
@@ -687,7 +775,7 @@
                 },
                 saveSetting: function () {
                     var _this = this;
-                    axios.post("/save_setting", this.toFormData(this.setting_form, ["pihole_server", "pihole_web_password", "es_server", "k8s_server"]))
+                    axios.post("/save_setting", this.toFormData(this.setting_form, ["pihole_server", "pihole_web_password", "es_server", "k8s_server", "k8s_auth_token"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;
@@ -770,6 +858,52 @@
                                 }
                             })
                     });
+                },
+                cellStyle: function ({row, column, rowIndex, columnIndex}) {
+                  var style = {
+                    "font-size":"14px"
+                  };
+                  if (columnIndex == 2) {
+                      // CPU
+                      var cpuUsage = Number(row.cpu.replace("%", ""));
+                      if (cpuUsage <= 50) {
+                        style.color = "#67C23A";
+                      } else if (cpuUsage <= 80) {
+                        style.color = "#E6A23C";
+                      } else {
+                        style.color = "#F56C6C";
+                      }
+                  } else if (columnIndex == 4 || columnIndex == 3) {
+                      var field = columnIndex == 3 ? "memory" : "disk";
+                      var usage = row[field].match(/(\d+(\.\d+)?)\%/) ? Number(row[field].match(/(\d+(\.\d+)?)\%/)[1]) : ""; 
+                      // 磁盘，内存
+                      if (usage <= 50) {
+                        style.color = "#67C23A";
+                      } else if (usage <= 80) {
+                        style.color = "#E6A23C";
+                      } else {
+                        style.color = "#F56C6C";
+                      }
+                  } else if (columnIndex == 5) {
+                      // 包管理器
+                      var packageCount = Number(row["package_manager_update_count"]);
+                      if (packageCount <= 100) {
+                        style.color = "#67C23A";
+                      } else {
+                        style.color = "#E6A23C";
+                      }
+                  } else if (columnIndex == 6) {
+                      // 温度
+                      var temp = Number(row["cpu_temp"].replace("℃", ""));
+                      if (temp <= 60) {
+                        style.color = "#67C23A";
+                      } else if (temp <= 80) {
+                        style.color = "#E6A23C";
+                      } else {
+                        style.color = "#F56C6C";
+                      }
+                  }
+                  return style;
                 },
                 // task
                 taskRowClassName: function ({ row, rowIndex }) {
@@ -1309,6 +1443,28 @@
                         }
                     });
                 },
+                // k8s
+                getK8sList: function () {
+                    var _this = this;
+                    return axios.post("/get_k8s_list", "t=" + _this.k8s_index).then(function (ret) {
+                        _this.k8s_loading = false;
+                        if (ret.data.ok == 1) {
+                          _this.k8s_status = true;
+                          var data = ret.data.data.list;
+                          _this.k8s_list = data;
+                        } else {
+                          _this.k8s_status = false;
+                          _this.k8s_message = ret.data.message;
+                        }
+                    });
+                },
+                handleK8sClick: function () {
+                  this.k8s_loading = true;
+                  this.getK8sList();
+                },
+                formatK8sServicePort: function (row, column, cellValue, index) {
+                  return JSON.stringify(row.spec.ports);
+                },
                 // common
                 escapeHtml: function (string) {
                     return string
@@ -1417,7 +1573,7 @@
                 initTabInterval: function () {
                     var _this = this;
                     var map = {
-                      0: [this.getPiholeStatistics],
+                      0: [this.getPiholeStatistics, this.getK8sList],
                       1: [this.getData, this.getClientApplyCount],
                       2: [this.getCpuChart],
                       3: [this.getMemoryChart],

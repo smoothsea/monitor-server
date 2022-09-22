@@ -647,6 +647,7 @@ fn get_setting(_admin: Admin) -> Json<model::SettingRow>
             pihole_web_password: "".to_string(),
             es_server: "".to_string(),
             k8s_server: "".to_string(),
+            k8s_auth_token: "".to_string(),
         })
     }
 }
@@ -657,12 +658,19 @@ struct SaveSettingParam {
     pihole_web_password: String,
     es_server: String,
     k8s_server: String,
+    k8s_auth_token: String,
 }
 
 #[post("/save_setting", data="<params>")]
 fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res::<Vec<String>>> 
 {
-    match model::save_setting(&params.pihole_server, &params.pihole_web_password, &params.es_server, &params.k8s_server) {
+    match model::save_setting(
+        &params.pihole_server, 
+        &params.pihole_web_password, 
+        &params.es_server, 
+        &params.k8s_server, 
+        &params.k8s_auth_token
+        ){
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -677,6 +685,25 @@ fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res::<Vec<
 fn get_pihole_statistics(_admin: Admin) -> Json<Res::<model::PiholeData>>
 {
     match model::get_pihole_statistics() {
+        Ok(d) => {
+            return Res::ok(None, Some(d));
+        },
+        Err(e) => {
+            return Res::error(Some(e.to_string())); 
+        }
+    } 
+}
+
+// K8s
+#[derive(FromForm, Debug)]
+struct K8sListParam{
+    t: u8,
+}
+
+#[post("/get_k8s_list", data="<params>")]
+fn get_k8s_list(_admin: Admin, params:Form<K8sListParam>) -> Json<Res::<model::K8sListData>>
+{
+    match model::get_k8s_list(params.t) {
         Ok(d) => {
             return Res::ok(None, Some(d));
         },
@@ -713,6 +740,7 @@ fn main() {
          client_applys,pass_apply,reject_apply,
          get_setting, save_setting,
          get_pihole_statistics,
+         get_k8s_list,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)

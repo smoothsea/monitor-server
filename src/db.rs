@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:i64 = 8;
+    const CURRENT_VESION:i64 = 9;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -96,6 +96,10 @@ impl Db {
 
         sqls.insert(8, vec![
             "alter table config add pihole_web_password varchar(255)",
+        ]);
+
+        sqls.insert(9, vec![
+            "alter table config add k8s_auth_token varchar(500)",
         ]);
 
         for key in 1..=sqls.len() {
