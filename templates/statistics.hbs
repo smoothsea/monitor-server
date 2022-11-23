@@ -281,7 +281,7 @@
                               :data="k8s_list.items"
                               style="width: 100%">
                               <el-table-column
-                                prop="metadata.generateName"
+                                prop="metadata.name"
                                 label="名称"
                               >
                               </el-table-column>
@@ -364,10 +364,19 @@
                     <el-table-column prop="name" header-align="left" fixed label="名称" width="200px">
                     </el-table-column>
                     <el-table-column prop="cpu" header-align="left" label="cpu" width="100px" sortable>
+                        <template slot-scope="scope">
+                            <span v-html="scope.row.cpu" style="cursor:point" @click="getProcessList(scope.row.id, 0)"></span>
+                        </template>
                     </el-table-column>
                     <el-table-column prop="memory" header-align="left" label="内存" width="210px" sortable>
+                        <template slot-scope="scope">
+                            <span v-html="scope.row.memory" style="cursor:point" @click="getProcessList(scope.row.id, 1)"></span>
+                        </template>
                     </el-table-column>
                     <el-table-column prop="disk" header-align="left" label="磁盘" width="210px">
+                        <template slot-scope="scope">
+                            <span v-html="scope.row.disk" style="cursor:point" @click="getDiskList(scope.row.id)"></span>
+                        </template>
                     </el-table-column>
                     <el-table-column header-align="left" label="包管理器" width="200px">
                         <template slot-scope="scope">
@@ -510,6 +519,36 @@
                             @click="rejectApply(scope.row.id, scope.row.client_id)" :disabled="scope.row.status != APPLY_WAIT_TXT">拒绝</el-button>
                         </el-button>
                     </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <el-dialog title="进程列表" :visible.sync="process_pop" @close="processList=[];process_list_loading=true">
+            <el-table :data="processList" border 
+                v-loading="process_list_loading">
+                <el-table-column prop="process_name" label="进程">
+                </el-table-column>
+                <el-table-column prop="cpu_per" label="CPU占用">
+                </el-table-column>
+                <el-table-column prop="mem_per" label="内存占用">
+                </el-table-column>
+                <el-table-column prop="created_at" label="更新时间">
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <el-dialog title="硬盘列表" :visible.sync="disk_pop" @close="diskList=[];disk_list_loading=true">
+            <el-table :data="diskList" border 
+                v-loading="disk_list_loading">
+                <el-table-column prop="file_system" label="Filesystem">
+                </el-table-column>
+                <el-table-column prop="size" label="总大小">
+                </el-table-column>
+                <el-table-column prop="used" label="已使用">
+                </el-table-column>
+                <el-table-column prop="used_per" label="已使用%">
+                </el-table-column>
+                <el-table-column prop="mounted_on" label="挂载点">
                 </el-table-column>
             </el-table>
         </el-dialog>
@@ -682,6 +721,16 @@
                 k8s_loading: true,
                 k8s_index: 0,
                 k8s_list: {},
+                // process
+                process_pop: false,
+                process_list_loading: true,
+                processList: [
+                ],
+                // disk
+                disk_pop: false,
+                disk_list_loading: true,
+                diskList: [
+                ],
             },
             methods: {
                 // client
@@ -1464,6 +1513,40 @@
                 },
                 formatK8sServicePort: function (row, column, cellValue, index) {
                   return JSON.stringify(row.spec.ports);
+                },
+                // info
+                getProcessList: function (id, type) {
+                  var _this = this;
+                  _this.process_pop = true;
+                  axios.post("/processes", "client_id=" + id + "&t=" + type).then(function (ret) {
+                      if (ret.status) {
+                          ret = ret.data;
+                          for (var i=0,len=ret.length; i<len; i++) {
+                            ret[i]["cpu_per"] += " %";
+                            ret[i]["mem_per"] += " %";
+                          }
+                          _this.processList = ret;
+                      }
+                  }).then(function () {
+                      _this.process_list_loading = false;
+                  });
+                },
+                getDiskList: function (id, type) {
+                  var _this = this;
+                  _this.disk_pop = true;
+                  axios.post("/disks", "client_id=" + id).then(function (ret) {
+                      if (ret.status) {
+                          ret = ret.data;
+                          for (var i=0,len=ret.length; i<len; i++) {
+                            ret[i]["used_per"] = _this.tofixed(ret[i]["used"] / ret[i]["size"], 2)+ " %";
+                            ret[i]["size"] = _this.getfilesize(ret[i]["size"]);
+                            ret[i]["used"] = _this.getfilesize(ret[i]["used"]);
+                          }
+                          _this.diskList = ret;
+                      }
+                  }).then(function () {
+                      _this.disk_list_loading = false;
+                  });
                 },
                 // common
                 escapeHtml: function (string) {

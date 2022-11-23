@@ -172,6 +172,9 @@ struct StatusParams<'a> {
     network_stats: Vec<NetworkStat>,
     disk_avail: Option<u64>,
     disk_total: Option<u64>,
+    cpu_top_processes: Option<Vec<Process>>,
+    mem_top_processes: Option<Vec<Process>>,
+    disk_usage: Option<Vec<Disk>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -185,6 +188,20 @@ struct NetworkStat {
    pub tx_errors: u64, 
 }
 
+#[derive(Deserialize, Debug, Clone)]
+struct Process {
+    process_name: String,
+    cpu_per: String, 
+    mem_per: String, 
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct Disk {
+    file_system: String,
+    used: String,
+    size: String,
+    mounted_on: String,
+}
 
 #[post("/set_status", data="<status>")]
 fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res::<Vec<String>>>{
@@ -234,6 +251,47 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res::<Vec<String
         NO_PARAMS
     ) {
         return Res::error(Some("插入失败".to_string()));
+    }
+
+    if let Some(i) = status.cpu_top_processes.clone() {
+        let t = 0;
+        db.conn.execute(&format!("delete from process where type={} and client_id={}", t, client_id), NO_PARAMS);
+        let mut sql = "insert into process (process_name, cpu_per, mem_per, type, client_id, created_at) values".to_string();
+        for v in i.iter() {
+           sql.push_str(&format!("('{}', '{}', '{}', {}, {}, '{}' ),", v.process_name, v.cpu_per, v.mem_per, t, client_id, now));
+        }
+        if let Err(_e) = db.conn.execute(sql.trim_end_matches(','), 
+            NO_PARAMS
+        ) {
+            return Res::error(Some("插入失败".to_string()));
+        }
+    }
+
+    if let Some(i) = status.mem_top_processes.clone() {
+        let t = 1;
+        db.conn.execute(&format!("delete from process where type={} and client_id={}", t, client_id), NO_PARAMS);
+        let mut sql = "insert into process (process_name, cpu_per, mem_per, type, client_id, created_at) values".to_string();
+        for v in i.iter() {
+           sql.push_str(&format!("('{}', '{}', '{}', {}, {}, '{}' ),", v.process_name, v.cpu_per, v.mem_per, t, client_id, now));
+        }
+        if let Err(_e) = db.conn.execute(sql.trim_end_matches(','), 
+            NO_PARAMS
+        ) {
+            return Res::error(Some("插入失败".to_string()));
+        }
+    }
+
+    if let Some(i) = status.disk_usage.clone() {
+        db.conn.execute(&format!("delete from disk where client_id={}", client_id), NO_PARAMS);
+        let mut sql = "insert into disk (file_system, mounted_on, used, size, client_id, created_at) values".to_string();
+        for v in i.iter() {
+           sql.push_str(&format!("('{}', '{}', {}, {}, {}, '{}' ),", v.file_system, v.mounted_on, v.used, v.size, client_id, now));
+        }
+        if let Err(_e) = db.conn.execute(sql.trim_end_matches(','), 
+            NO_PARAMS
+        ) {
+            return Res::error(Some("插入失败".to_string()));
+        }
     }
 
     Res::ok(None, None)
@@ -713,6 +771,39 @@ fn get_k8s_list(_admin: Admin, params:Form<K8sListParam>) -> Json<Res::<model::K
     } 
 }
 
+// info
+#[derive(FromForm, Debug)]
+struct ProcessesParams {
+    client_id: u32,
+    t: u8,
+}
+
+#[post("/processes", data="<params>")]
+fn processes(_admin: Admin, params:Form<ProcessesParams>) -> Json<Vec<model::ProcessRow>>
+{
+    if let Ok(ret) = model::get_processes(params.client_id, params.t) {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+#[derive(FromForm, Debug)]
+struct DiskParams {
+    client_id: u32,
+}
+
+#[post("/disks", data="<params>")]
+fn disks(_admin: Admin, params:Form<DiskParams>) -> Json<Vec<model::DiskRow>>
+{
+    if let Ok(ret) = model::get_disks(params.client_id) {
+        Json(ret)     
+    } else {
+        Json(vec!())
+    }
+}
+
+
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
         fatal!("数据库加载错误, {}", e);
@@ -741,6 +832,7 @@ fn main() {
          get_setting, save_setting,
          get_pihole_statistics,
          get_k8s_list,
+         processes,disks,
      ])
     .attach(Template::fairing())
     .manage(ssh_client)

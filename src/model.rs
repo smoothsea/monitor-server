@@ -783,3 +783,97 @@ fn request_k8s(req: http::Request<Vec<u8>>) -> Result<reqwest::blocking::Respons
 
     Err("未配置K8s相关信息")?
 }
+
+// Info
+#[derive(Serialize,Debug)]
+pub struct ProcessRow
+{
+    id: u32,
+    process_name: String,
+    cpu_per: String,
+    mem_per: String,
+    created_at: Option<String>,
+    client_id: u32,
+}
+
+pub fn get_processes(client_id: u32, t: u8) -> Result<Vec<ProcessRow>, Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        let sql = format!("select id,process_name,cpu_per,mem_per,created_at,client_id from process where client_id={} and type={}", client_id, t);
+        match db.conn.prepare(&sql) {
+            Ok(mut smtm) => {
+                if let Ok(mut ret) = smtm.query(NO_PARAMS) {
+                    let mut data:Vec<ProcessRow> = vec!();
+                    while let Some(row) = ret.next().unwrap() {
+                        let item = ProcessRow {
+                            id: row.get(0)?,
+                            process_name: row.get(1)?,
+                            cpu_per: row.get(2)?,
+                            mem_per: row.get(3)?,
+                            created_at: row.get(4)?,
+                            client_id: row.get(5)?,
+                        };
+                        data.push(item);
+                    }
+                    return Ok(data);
+                }
+            },
+            Err(_e) => {
+                println!("{:?}", _e);
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+
+#[derive(Serialize,Debug)]
+pub struct DiskRow
+{
+    id: u32,
+    file_system: String,
+    mounted_on: String,
+    used: f64,
+    size: f64,
+    created_at: Option<String>,
+    client_id: u32,
+}
+
+pub fn get_disks(client_id: u32) -> Result<Vec<DiskRow>, Box<dyn Error>>
+{
+    if let Ok(db) = Db::get_db() {
+        let sql = format!("select id,file_system,mounted_on,used,size,created_at,client_id from disk where client_id={}", client_id);
+        match db.conn.prepare(&sql) {
+            Ok(mut smtm) => {
+                if let Ok(mut ret) = smtm.query(NO_PARAMS) {
+                    let mut data:Vec<DiskRow> = vec!();
+                    while let Some(row) = ret.next().unwrap() {
+                        let item = DiskRow {
+                            id: row.get(0)?,
+                            file_system: row.get(1)?,
+                            mounted_on: row.get(2)?,
+                            used: row.get(3)?,
+                            size: row.get(4)?,
+                            created_at: row.get(5)?,
+                            client_id: row.get(6)?,
+                        };
+                        data.push(item);
+                    }
+                    return Ok(data);
+                }
+            },
+            Err(_e) => {
+                println!("{:?}", _e);
+                Err("查询错误")?;
+            }
+        }
+    } else {
+        Err("数据库连接错误")?;
+    }    
+
+    return Err("")?;
+}
+
