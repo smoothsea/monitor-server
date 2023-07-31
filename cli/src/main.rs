@@ -1,3 +1,5 @@
+#![feature(exclusive_range_pattern)]
+
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -473,33 +475,48 @@ fn statistics_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     };
     let rows = app.items.iter().map(|item| {
         let default = "".to_string();
+        let mut cpu_ratio:f64 = 0.0;
         let cpu = if item.is_online == 1 {
-            format!("{}%", ((item.cpu_user.unwrap_or_default() + item.cpu_system.unwrap_or_default()) * 10000.0).round() / 100.0 )
+            cpu_ratio = ((item.cpu_user.unwrap_or_default() + item.cpu_system.unwrap_or_default()) * 10000.0).round() / 100.0; 
+            format!("{}%", cpu_ratio)
         } else {
             default.clone()
         };
+
+        let mut memory_ratio:f64 = 0.0;
         let memory = if item.is_online == 1 {
             let memory_total = item.memory_total.unwrap_or_default();
             let memory_free = item.memory_free.unwrap_or_default();
-            format!("{}/{}({}%)", format_bytes(memory_total - memory_free), format_bytes(memory_total), ((memory_total - memory_free)/memory_total*10000.0).round() / 100.0 )
+            memory_ratio = ((memory_total - memory_free)/memory_total*10000.0).round() / 100.0;
+            format!("{}/{}({}%)", format_bytes(memory_total - memory_free), format_bytes(memory_total), memory_ratio)
         } else {
             default.clone()
         };
+
+        let mut disk_ratio:f64 = 0.0;
         let disk = if item.is_online == 1 && item.disk_total.unwrap_or_default() > 0.0 {
             let disk_total = item.disk_total.unwrap_or_default();
             let disk_avail = item.disk_avail.unwrap_or_default();
-            format!("{}/{}({}%)", format_bytes(disk_total - disk_avail), format_bytes(disk_total), ((disk_total - disk_avail) / disk_total * 10000.0).round() / 100.0)
+            disk_ratio = ((disk_total - disk_avail) / disk_total * 10000.0).round() / 100.0;
+            format!("{}/{}({}%)", format_bytes(disk_total - disk_avail), format_bytes(disk_total), disk_ratio)
         } else {
             default.clone()
         };
+
+        let package_manager_update_count = item.package_manager_update_count;
+        let cpu_temp = item.cpu_temp.unwrap_or_default();
+
+        let cell_style_green = Style::default().fg(Color::Green);
+        let cell_style_yellow = Style::default().fg(Color::Yellow);
+        let cell_style_red = Style::default().fg(Color::Red);
         let cells = vec![
             Cell::from(item.client_ip.clone().unwrap_or_default()),    
             Cell::from(item.name.clone().unwrap_or_default()),    
-            Cell::from(cpu),    
-            Cell::from(memory),    
-            Cell::from(disk),    
-            Cell::from(item.package_manager_update_count.to_string()),    
-            Cell::from(item.cpu_temp.unwrap_or_default().to_string()),    
+            Cell::from(cpu).style(match cpu_ratio {0.0..50.0 => cell_style_green, 50.0..80.0 => cell_style_yellow, _ => cell_style_red}),    
+            Cell::from(memory).style(match memory_ratio {0.0..50.0 => cell_style_green, 50.0..80.0 => cell_style_yellow, _ => cell_style_red}),    
+            Cell::from(disk).style(match disk_ratio {0.0..50.0 => cell_style_green, 50.0..80.0 => cell_style_yellow, _ => cell_style_red}),    
+            Cell::from(package_manager_update_count.to_string()).style(match package_manager_update_count {0..=100 => cell_style_green, _ => cell_style_yellow}),    
+            Cell::from(cpu_temp.to_string()).style(match cpu_temp {0.0..60.0 => cell_style_green, 60.0..80.0 => cell_style_yellow, _ => cell_style_red}),    
             Cell::from(item.last_online_time.clone().unwrap_or_default()),    
             Cell::from(item.system_version.clone().unwrap_or_default()),    
         ];
