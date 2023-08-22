@@ -5,7 +5,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{error::Error, io::self, time::{Duration, Instant}, env};
+use std::{error::Error, io::self, time::{Duration, Instant}, env, cmp::Ordering, process::Output};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect, Alignment},
@@ -25,6 +25,18 @@ enum InputMode {
     EditingRow2,
 }
 
+enum SortType {
+    Default,
+    NameAsc,
+    NameDesc,
+    CpuAsc,
+    CpuDesc,
+    MemoryAsc,
+    MemoryDesc,
+    DiskAsc,
+    DiskDesc,
+}
+
 struct App {
     server_host: String,
     username: String,
@@ -39,6 +51,8 @@ struct App {
     http_client: Client,
     show_pop: bool,
     pop_message: String,
+    show_help: bool,
+    sort_type: SortType,
 }
 
 impl Default for App {
@@ -57,6 +71,8 @@ impl Default for App {
             http_client: reqwest::blocking::ClientBuilder::new().danger_accept_invalid_certs(true).build().unwrap(),
             show_pop: false,
             pop_message: String::new(),
+            show_help: false,
+            sort_type: SortType::Default,
         }
     }
 }
@@ -256,12 +272,31 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
             .unwrap_or_else(|| Duration::from_secs(0));
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
+                if app.show_help {
+                   match key.code {
+                        KeyCode::Esc => {
+                            app.show_help = false;
+                        }
+                        _ => {}
+                    }
+                   continue;
+                }
+
                 match key.code {
                     KeyCode::Char('q') => return Ok(app),
                     KeyCode::Right => app.next(),
                     KeyCode::Left => app.previous(),
                     KeyCode::Down => app.down(),
                     KeyCode::Up => app.up(),
+                    KeyCode::Char('?') => app.show_help = true,
+                    KeyCode::Char('n') => app.sort_type = SortType::NameAsc,
+                    KeyCode::Char('N') => app.sort_type = SortType::NameDesc,
+                    KeyCode::Char('c') => app.sort_type = SortType::CpuAsc,
+                    KeyCode::Char('C') => app.sort_type = SortType::CpuDesc,
+                    KeyCode::Char('m') => app.sort_type = SortType::MemoryAsc,
+                    KeyCode::Char('M') => app.sort_type = SortType::MemoryDesc,
+                    KeyCode::Char('d') => app.sort_type = SortType::DiskAsc,
+                    KeyCode::Char('D') => app.sort_type = SortType::DiskDesc,
                     _ => {}
                 }
             }
@@ -396,25 +431,18 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
 
     match app.input_mode {
         InputMode::Normal =>
-            // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
             {}
 
         InputMode::EditingRow1 => {
-            // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
             f.set_cursor(
-                // Put cursor past the end of the input text
                 chunks[1].x + app.username.width() as u16 + 1,
-                // Move one line down, from the border to the input line
                 chunks[1].y + 1,
             )
         }
 
         InputMode::EditingRow2 => {
-            // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
             f.set_cursor(
-                // Put cursor past the end of the input text
                 chunks[2].x + app.password_input.width() as u16 + 1,
-                // Move one line down, from the border to the input line
                 chunks[2].y + 1,
             )
         }
@@ -445,23 +473,17 @@ fn statistics_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL).title("Tabs"))
         .select(app.index)
-        .style(Style::default().fg(Color::Cyan))
+        .style(Style::default().fg(Color::Black))
         .highlight_style(
             Style::default()
                 .add_modifier(Modifier::BOLD)
-                .bg(Color::Black),
+                .bg(Color::White),
         );
     f.render_widget(tabs, chunks[0]);
 
     let selected_style = Style::default().add_modifier(Modifier::REVERSED);
-    let normal_style = Style::default().bg(Color::Blue);
-    let header_cells = ["IP", "Name", "CPU", "Memory", "Disk", "Package manager", "Tem", "last updated", "System version"]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red)));
-    let header = Row::new(header_cells)
-        .style(normal_style)
-        .height(1)
-        .bottom_margin(1);
+    let normal_style = Style::default().bg(Color::White);
+    let mut header_cells = ["IP", "Name", "CPU", "Memory", "Disk", "Package manager", "Tem", "last updated", "System version"];
     let format_bytes = |bytes:f64| {
         if bytes < 1024.0 {
             return format!("{} B", bytes);
@@ -473,6 +495,52 @@ fn statistics_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             return format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0));
         }
     };
+
+    match app.sort_type {
+        SortType::Default => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| b.is_online.cmp(&a.is_online));
+        },
+        SortType::NameAsc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| a.name.cmp(&b.name));
+            header_cells[1] = "Name ↓";
+        },
+        SortType::NameDesc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| b.name.cmp(&a.name));
+            header_cells[1] = "Name ↑";
+        },
+        SortType::CpuAsc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| (a.cpu_user.unwrap_or_default() + a.cpu_system.unwrap_or_default()).partial_cmp(&(b.cpu_user.unwrap_or_default() + b.cpu_system.unwrap_or_default())).unwrap());
+            header_cells[2] = "CPU ↓";
+        },
+        SortType::CpuDesc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| (b.cpu_user.unwrap_or_default() + b.cpu_system.unwrap_or_default()).partial_cmp(&(a.cpu_user.unwrap_or_default() + a.cpu_system.unwrap_or_default())).unwrap());
+            header_cells[2] = "CPU ↑";
+        },
+        SortType::MemoryAsc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| (b.memory_free.unwrap_or_default()/b.memory_total.unwrap_or(1.0)).partial_cmp(&(a.memory_free.unwrap_or_default()/a.memory_total.unwrap_or(1.0))).unwrap());
+            header_cells[3] = "Memory ↑";
+        },
+        SortType::MemoryDesc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| (a.memory_free.unwrap_or_default()/a.memory_total.unwrap_or(1.0)).partial_cmp(&(b.memory_free.unwrap_or_default()/b.memory_total.unwrap_or(1.0))).unwrap());
+            header_cells[3] = "Memory ↓";
+        },
+        SortType::DiskAsc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| (b.disk_avail.unwrap_or_default()/b.disk_total.unwrap_or(1.0)).partial_cmp(&(a.disk_avail.unwrap_or_default()/a.disk_total.unwrap_or(1.0))).unwrap());
+            header_cells[4] = "Disk ↑";
+        },
+        SortType::DiskDesc => {
+            app.items.sort_by(|a:&ClientItem, b:&ClientItem| (a.disk_avail.unwrap_or_default()/a.disk_total.unwrap_or(1.0)).partial_cmp(&(b.disk_avail.unwrap_or_default()/b.disk_total.unwrap_or(1.0))).unwrap());
+            header_cells[4] = "Disk ↓";
+        },
+    };
+
+    header_cells.iter()
+        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Black)));
+    let header = Row::new(header_cells)
+        .style(normal_style)
+        .height(1)
+        .bottom_margin(1);
+
     let rows = app.items.iter().map(|item| {
         let default = "".to_string();
         let mut cpu_ratio:f64 = 0.0;
@@ -543,6 +611,63 @@ fn statistics_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             Constraint::Percentage(15),
         ]);
     f.render_stateful_widget(t, chunks[1], &mut app.state);
+
+    if app.show_help {
+        let create_block = |title| {
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Black).fg(Color::White))
+                .title(Span::styled(
+                    title,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ))
+        };
+
+        let text_style = Style::default().fg(Color::White);
+        let text = vec![
+            Spans::from(Span::styled(
+                "  n   Sort clients by Name ASC",
+                text_style,
+            )),
+            Spans::from(Span::styled(
+                "  N   Sort clients by Name DESC",
+                text_style,
+            )),
+            Spans::from(Span::styled(
+                "  c   Sort clients by CPU ASC",
+                text_style,
+            )),
+            Spans::from(Span::styled(
+                "  C   Sort clients by CPU DESC",
+                text_style,
+            )),
+            Spans::from(Span::styled(
+                "  m   Sort clients by Memory ASC",
+                text_style,
+            )),
+            Spans::from(Span::styled(
+                "  M   Sort clients by Memory DESC",
+                text_style,
+            )),
+            Spans::from(Span::styled(
+                "  d   Sort clients by Disk ASC",
+                text_style,
+            )),
+            Spans::from(Span::styled(
+                "  D   Sort clients by Disk DESC",
+                text_style,
+            )),
+        ];
+
+        let size = f.size();
+        let block = Paragraph::new(text.clone())
+        .style(Style::default().bg(Color::Black).fg(Color::White))
+        .block(create_block("Help"))
+        .alignment(Alignment::Left);
+        let area = centered_rect(40, 20, size);
+        f.render_widget(Clear, area); //this clears out the background
+        f.render_widget(block, area);
+    }
 }
 
 fn warning(app:&mut App, msg: String) {
