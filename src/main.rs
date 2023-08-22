@@ -104,7 +104,7 @@ impl <'a, 'r> FromRequest<'a, 'r> for Admin {
                 return Outcome::Failure((Status::Forbidden, AdminError::NotPermit));
             }
         } else {
-            return Outcome::Forward(());
+            return Outcome::Failure((Status::Forbidden, AdminError::NotPermit));
         }
     }
 }
@@ -803,6 +803,10 @@ fn disks(_admin: Admin, params:Form<DiskParams>) -> Json<Vec<model::DiskRow>>
     }
 }
 
+#[catch(403)]
+fn forbidden() -> Redirect {
+    Redirect::to(uri!(login))
+}
 
 fn main() {
     let db:Db = Db::get_db().unwrap_or_else(|e| {
@@ -819,6 +823,7 @@ fn main() {
     };
 
     rocket::ignite()
+    .register(catchers![forbidden])
     .mount("/public", StaticFiles::from("./templates/static"))
     .mount("/", routes![
          check_online, login, do_login,
