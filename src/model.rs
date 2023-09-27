@@ -307,7 +307,7 @@ pub fn get_client(client_id: u32) -> Result<Client, Box<dyn Error>>
     }
 }
 
-pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, ssh_address: &str, ssh_username: &str, ssh_password: &str) -> Result<(), Box<dyn Error>>
+pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, ssh_address: &str, ssh_username: &str, ssh_password: &str, remark: &str) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         if let Ok(_d) = db.conn.query_row::<(), _, _>(&format!("select id from client where id!={} and client_ip=?1", client_id), &[&client_ip], |_row| {
@@ -316,8 +316,8 @@ pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, 
             Err("该用户ip已使用")?;
         }
 
-        if let Err(_e) = db.conn.execute(&format!("update client set name=?1,client_ip=?2,ssh_address=?3,ssh_username=?4,ssh_password=?5,is_enable={} where id={}",
-             is_enable, client_id), &[&name, &client_ip, &ssh_address, &ssh_username, &ssh_password]) {
+        if let Err(_e) = db.conn.execute(&format!("update client set name=?1,client_ip=?2,ssh_address=?3,ssh_username=?4,ssh_password=?5,remark=?6,is_enable={} where id={}",
+             is_enable, client_id), &[&name, &client_ip, &ssh_address, &ssh_username, &ssh_password, &remark]) {
             Err("修改失败")?;
         }
         Ok(())
@@ -326,7 +326,7 @@ pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, 
     }
 }
 
-pub fn add_client(name: &str, client_ip: &str, ssh_address: &str, ssh_username: &str, ssh_password: &str) -> Result<(), Box<dyn Error>>
+pub fn add_client(name: &str, client_ip: &str, ssh_address: &str, ssh_username: &str, ssh_password: &str, remark: &str) -> Result<(), Box<dyn Error>>
 {
     if let Ok(db) = Db::get_db() {
         if let Ok(_d) = db.conn.query_row::<(), _, _>("select id from client where client_ip=?1", &[&client_ip], |_row| {
@@ -336,8 +336,8 @@ pub fn add_client(name: &str, client_ip: &str, ssh_address: &str, ssh_username: 
         }
         
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        if let Err(_e) = db.conn.execute(&format!("insert into client (name,client_ip,ssh_address,ssh_username,ssh_password,is_enable,created_at) values(?1,?2,?3,?4,?5,{},'{}')", 1, now),
-         &[&name, &client_ip, &ssh_address, &ssh_username, &ssh_password]) {
+        if let Err(_e) = db.conn.execute(&format!("insert into client (name,client_ip,ssh_address,ssh_username,ssh_password,remark,is_enable,created_at) values(?1,?2,?3,?4,?5,?6,{},'{}')", 1, now),
+         &[&name, &client_ip, &ssh_address, &ssh_username, &ssh_password, &remark]) {
             println!("{:?}", _e);
             Err("添加失败")?;
         }
@@ -373,6 +373,7 @@ pub struct StatisticsRow
     cpu_temp: Option<f64>,
     disk_avail: Option<i64>,
     disk_total: Option<i64>,
+    remark: Option<String>,
 }
 
 pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
@@ -383,7 +384,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
             cpu.cpu_user,cpu.cpu_system,cpu.cpu_nice,cpu.cpu_idle,memory.memory_free,memory.memory_total,
             client.system_version,client.package_manager_update_count,
             ssh_address,ssh_username,ssh_password,cpu_temp,
-            disk_avail,disk_total
+            disk_avail,disk_total,remark 
             from client
             left join (select * from cpu_info as info inner join (select max(id) as mid from cpu_info group by client_id) as least_info on info.id=least_info.mid) as cpu on cpu.client_id=client.id
             left join (select * from memory_info as info inner join (select max(id) as mid from memory_info group by client_id) as least_info on info.id=least_info.mid) as memory on memory.client_id=client.id
@@ -417,6 +418,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                             cpu_temp: row.get(20)?,
                             disk_avail: row.get(21)?,
                             disk_total: row.get(22)?,
+                            remark: row.get(23)?,
                         };
                         data.push(item);
                     }
@@ -617,7 +619,7 @@ pub fn pass_apply(id: u32) -> Result<(), Box<dyn Error>>
         }
     
         if let Some(a) = apply {
-            add_client(&a.client_ip, &a.client_ip, &a.client_ip, "", "")?;
+            add_client(&a.client_ip, &a.client_ip, &a.client_ip, "", "", "")?;
            
             if let Err(_e) = db.conn.execute(&format!("update client_apply set status={},updated_at=?1 where id={}", CLIENT_APPLY_STATUS_PASS, id), &[&now]) {
                 Err("修改失败")?;

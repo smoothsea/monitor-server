@@ -440,6 +440,9 @@
                 <el-form-item label="SSH密码">
                     <el-input v-model="edit_form.ssh_password" type="password"></el-input>
                 </el-form-item>
+                <el-form-item label="备注">
+                    <el-input type="textarea" v-model="edit_form.remark"></el-input>
+                </el-form-item>
                 <el-form-item label="启用">
                     <el-switch v-model="edit_form.is_enable" :active-value="1" :inactive-value="0"></el-switch>
                 </el-form-item>
@@ -466,6 +469,9 @@
                 </el-form-item>
                 <el-form-item label="SSH密码">
                     <el-input v-model="add_client_form.ssh_password" type="password"></el-input>
+                </el-form-item>
+                <el-form-item label="备注">
+                    <el-input type="textarea" v-model="add_client_form.remark"></el-input>
                 </el-form-item>
             </el-form>
             <span slot="footer" class="dialog-footer">
@@ -651,6 +657,7 @@
                     ssh_address: "",
                     ssh_username: "",
                     ssh_password: "",
+                    remark: "",
                 },
                 add_client_form: {
                     name: "",
@@ -658,6 +665,7 @@
                     ssh_address: "",
                     ssh_username: "",
                     ssh_password: "",
+                    remark: "",
                 },
                 setting_form: {
                     pihole_server: "",
@@ -806,7 +814,7 @@
                     var _this = this;
                     this.edit_form.client_id = this.edit_form.id;
 
-                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_address", "ssh_username", "ssh_password"]))
+                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_address", "ssh_username", "ssh_password", "remark"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;
@@ -844,7 +852,7 @@
                 },
                 addClient: function () {
                     var _this = this;
-                    axios.post("/add_client", this.toFormData(this.add_client_form, ["name", "client_ip", "ssh_address", "ssh_username", "ssh_password"]))
+                    axios.post("/add_client", this.toFormData(this.add_client_form, ["name", "client_ip", "ssh_address", "ssh_username", "ssh_password", "remark"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;

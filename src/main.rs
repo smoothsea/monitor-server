@@ -368,13 +368,15 @@ struct AddClientParams {
     ssh_address: Option<String>,
     ssh_username: Option<String>,
     ssh_password: Option<String>,
+    remark: Option<String>,
 }
 
 #[post("/add_client", data="<params>")]
 fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res::<Vec<String>>> 
 {
     match model::add_client(&params.name, &params.client_ip, 
-        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
+        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()),
+        &params.ssh_password.clone().unwrap_or("".to_string()), &params.remark.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -393,13 +395,15 @@ struct EditClientParams {
     ssh_address: Option<String>,
     ssh_username: Option<String>,
     ssh_password: Option<String>,
+    remark: Option<String>,
 }
 
 #[post("/edit_client", data="<params>")]
 fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res::<Vec<String>>> 
 {
     match model::edit_client(params.client_id, &params.name, &params.client_ip, params.is_enable, 
-        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string())) {
+        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()),
+        &params.ssh_password.clone().unwrap_or("".to_string()), &params.remark.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
         },

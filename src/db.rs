@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:i64 = 10;
+    const CURRENT_VESION:i64 = 11;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -105,6 +105,10 @@ impl Db {
         sqls.insert(10, vec![
             "create table process (id integer primary key autoincrement,process_name varchar(255) not null,cpu_per varchar(10) not null,mem_per varchar(10) not null, type tinyint not null default 0,client_id integer not null,created_at datetime)",
             "create table disk (id integer primary key autoincrement,file_system varchar(255) not null,mounted_on varchar(255) not null,used UNSIGNED BIG INT,size UNSIGNED BIG INT,client_id integer not null,created_at datetime)",
+        ]);
+
+        sqls.insert(11, vec![
+            "alter table client add remark varchar(1024)",
         ]);
 
         for key in 1..=sqls.len() {
