@@ -14,10 +14,11 @@ RUN apt-get update && apt-get install -y \
             ca-certificates \
 	    libsqlite3-0
 ENV TZ=Asia/Shanghai
+ADD start.sh /
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone 
 RUN mkdir /data
 COPY --from=build app/monitor-server/target/release/monitor_server .
 COPY --from=build app/monitor-server/target/release/proxy .
 COPY --from=build app/monitor-server/templates ./templates/
 WORKDIR /
-CMD ["/monitor_server"]
+CMD ["/start.sh"]
