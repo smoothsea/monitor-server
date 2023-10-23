@@ -1,5 +1,5 @@
 use chrono::Local;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Mutex};
 use rusqlite::{Connection, NO_PARAMS};
 
 pub struct Db {
@@ -7,11 +7,12 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:i64 = 11;
+    const CURRENT_VESION:i64 = 12;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
     pub fn get_db() ->  Result<Db, Box<dyn std::error::Error>> {
+        // TODO singleton
         Db::new("/data/monitor.db")
     }
 
@@ -111,6 +112,10 @@ impl Db {
             "alter table client add remark varchar(1024)",
         ]);
 
+        sqls.insert(12, vec![
+            "alter table client add ssh_enable tinyint default 0",
+        ]);
+
         for key in 1..=sqls.len() {
             let key = key as i64;
             let value = sqls.get(&key).unwrap();
@@ -118,7 +123,6 @@ impl Db {
                 Some(i) => {
                     if key > i {
                         for sql in value {
-                            println!("{}", sql);
                             self.conn.execute(sql, NO_PARAMS)?;
                         }
                         self.conn.execute("update version set version=?1", &[key])?;

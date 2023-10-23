@@ -188,7 +188,12 @@
         } 
 
         .pi-hole-card {
-          color: white!important
+            color: white!important
+        }
+
+        .el-switch {
+            line-height: 40px!important;
+            height: 40px!important;
         }
 
         [v-cloak] {
@@ -432,7 +437,7 @@
                     <el-input v-model="edit_form.client_ip"></el-input>
                 </el-form-item>
                 <el-form-item label="SSH地址">
-                    <el-input v-model="edit_form.ssh_address"></el-input>
+                    <el-input v-model="edit_form.ssh_address" placeholder="开启SSH映射后自动生成" readonly></el-input>
                 </el-form-item>
                 <el-form-item label="SSH用户">
                     <el-input v-model="edit_form.ssh_username"></el-input>
@@ -445,6 +450,9 @@
                 </el-form-item>
                 <el-form-item label="启用">
                     <el-switch v-model="edit_form.is_enable" :active-value="1" :inactive-value="0"></el-switch>
+                </el-form-item>
+                <el-form-item label="SSH映射">
+                    <el-switch v-model="edit_form.ssh_enable" :active-value="1" :inactive-value="0"></el-switch>
                 </el-form-item>
             </el-form>
             <span slot="footer" class="dialog-footer">
@@ -460,9 +468,6 @@
                 </el-form-item>
                 <el-form-item label="客户ip">
                     <el-input v-model="add_client_form.client_ip"></el-input>
-                </el-form-item>
-                <el-form-item label="SSH地址">
-                    <el-input v-model="add_client_form.ssh_address"></el-input>
                 </el-form-item>
                 <el-form-item label="SSH用户">
                     <el-input v-model="add_client_form.ssh_username"></el-input>
@@ -654,6 +659,7 @@
                     name: "",
                     client_ip: "",
                     is_enable: "",
+                    ssh_enable: "",
                     ssh_address: "",
                     ssh_username: "",
                     ssh_password: "",
@@ -662,7 +668,6 @@
                 add_client_form: {
                     name: "",
                     client_ip: "",
-                    ssh_address: "",
                     ssh_username: "",
                     ssh_password: "",
                     remark: "",
@@ -814,11 +819,12 @@
                     var _this = this;
                     this.edit_form.client_id = this.edit_form.id;
 
-                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_address", "ssh_username", "ssh_password", "remark"]))
+                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_enable", "ssh_username", "ssh_password", "remark"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;
                                 if (ret.ok) {
+                                    _this.initShell();
                                     _this.getData();
                                     _this.edit_pop = false;
                                 } else {
@@ -852,7 +858,7 @@
                 },
                 addClient: function () {
                     var _this = this;
-                    axios.post("/add_client", this.toFormData(this.add_client_form, ["name", "client_ip", "ssh_address", "ssh_username", "ssh_password", "remark"]))
+                    axios.post("/add_client", this.toFormData(this.add_client_form, ["name", "client_ip", "ssh_username", "ssh_password", "remark"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;
@@ -1370,6 +1376,11 @@
                             resolve(ret);
                         })
                     })
+                },
+                initShell: function () {
+                    axios.post("/clear_ssh_client", "client_id=" + Number(this.teriminalId));
+                    this.teriminalId = 0;
+                    this.terminal_content = "<span style='color:red'>Please connect to the server first</span>";
                 },
                 onShellCmdKeyDown: function (event) {
                     switch (event.key) {

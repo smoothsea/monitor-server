@@ -9,7 +9,6 @@ use db::Db;
 use ssh2::Session; 
 use chrono::Duration;
 use std::sync::Mutex;
-use serde::Deserialize;
 use rusqlite::NO_PARAMS;
 use std::net::TcpStream;
 use rocket::http::Status;
@@ -19,6 +18,7 @@ use rocket_contrib::json::Json;
 use rocket::response::Redirect;
 use function::{Res, clean_data};
 use chrono::{Local, NaiveDateTime};
+use serde::{Deserialize, Serialize};
 use rocket::http::{Cookie, Cookies};
 use rocket_contrib::serve::StaticFiles;
 use rocket_contrib::templates::Template;
@@ -175,6 +175,7 @@ struct StatusParams<'a> {
     cpu_top_processes: Option<Vec<Process>>,
     mem_top_processes: Option<Vec<Process>>,
     disk_usage: Option<Vec<Disk>>,
+    ssh_port: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -297,6 +298,63 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res::<Vec<String
     Res::ok(None, None)
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+struct ClientInfo {
+    ssh_enable: Option<u8>,
+}
+
+#[post("/get_info")]
+fn get_info(client:Client) -> Json<Res::<ClientInfo>>{
+    let client_id = client.0;
+    let db:Db;
+    if let Ok(d) = Db::get_db() {
+        db = d;
+    } else {
+        return Res::error(Some("数据库连接错误".to_string()));
+    }
+
+    let sql = format!("select ssh_enable from client where id={}", client_id);
+    match db.conn.query_row(&sql, NO_PARAMS, |row| Ok(ClientInfo{
+        ssh_enable: row.get(0)?,
+    })) {
+        Ok(data) => {
+            return Res::ok(None, Some(data));
+        },
+        Err(_e) => {
+            return Res::error(Some("信息不存在".to_string()));
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct ClinetInfoParams {
+    ssh_port: Option<u64>,
+}
+
+#[post("/set_info", data="<info>")]
+fn set_info(client:Client, info:Json<ClinetInfoParams>) -> Json<Res::<Vec<String>>>{
+    let client_id = client.0;
+    let db:Db;
+    if let Ok(d) = Db::get_db() {
+        db = d;
+    } else {
+        return Res::error(Some("数据库连接错误".to_string()));
+    }
+
+    if let Some(i) = info.ssh_port.clone() {
+        let mut sql = format!("update client set ssh_address='{}'", format!("127.0.0.1:{}", i));
+        sql = format!("{} where id={} ", sql, client_id);
+
+        if let Err(_e) = db.conn.execute(&sql, 
+            NO_PARAMS
+        ) {
+            return Res::error(Some("插入失败".to_string()));
+        }
+    }
+
+    Res::ok(None, None)
+}
+
 #[get("/")]
 fn index() -> Redirect{
     Redirect::to(uri!(login))
@@ -365,7 +423,6 @@ fn delete_client(_admin: Admin, params:Form<DeleteClientParams>) -> Json<Res::<V
 struct AddClientParams {
     name: String,
     client_ip: String,
-    ssh_address: Option<String>,
     ssh_username: Option<String>,
     ssh_password: Option<String>,
     remark: Option<String>,
@@ -374,8 +431,7 @@ struct AddClientParams {
 #[post("/add_client", data="<params>")]
 fn add_client(_admin: Admin, params:Form<AddClientParams>) -> Json<Res::<Vec<String>>> 
 {
-    match model::add_client(&params.name, &params.client_ip, 
-        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()),
+    match model::add_client(&params.name, &params.client_ip, &params.ssh_username.clone().unwrap_or("".to_string()),
         &params.ssh_password.clone().unwrap_or("".to_string()), &params.remark.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
@@ -391,8 +447,8 @@ struct EditClientParams {
     client_id: u32,
     name: String,
     client_ip: String,
-    is_enable: u32,  
-    ssh_address: Option<String>,
+    is_enable: u8,  
+    ssh_enable: u8,  
     ssh_username: Option<String>,
     ssh_password: Option<String>,
     remark: Option<String>,
@@ -401,8 +457,8 @@ struct EditClientParams {
 #[post("/edit_client", data="<params>")]
 fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res::<Vec<String>>> 
 {
-    match model::edit_client(params.client_id, &params.name, &params.client_ip, params.is_enable, 
-        &params.ssh_address.clone().unwrap_or("".to_string()), &params.ssh_username.clone().unwrap_or("".to_string()),
+    match model::edit_client(params.client_id, &params.name, &params.client_ip, params.is_enable as u32,params.ssh_enable, 
+        &params.ssh_username.clone().unwrap_or("".to_string()),
         &params.ssh_password.clone().unwrap_or("".to_string()), &params.remark.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
@@ -621,8 +677,8 @@ fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, sessio
         },
     }
 
-    let mut client_id = session.client_id.lock().unwrap(); 
     let mut s = session.session.lock().unwrap();
+    let mut client_id = session.client_id.lock().unwrap(); 
     let mut is_init = false;
     if let Some(id) = *client_id {
         if id != params.client_id {
@@ -690,6 +746,19 @@ fn run_ssh_command(_admin: Admin, params:Form<SshCommandParams>, session: State<
     } else {
         return Res::error(Some("查询错误".to_string()));
     }
+}
+
+#[post("/clear_ssh_client", data="<params>")]
+fn clear_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, session: State<SshSession>) -> Json<Res::<Vec<String>>>
+{
+    let mut s = session.session.lock().unwrap();
+    let mut client_id = session.client_id.lock().unwrap(); 
+    if (*client_id).unwrap_or_default() == params.client_id {
+        *client_id = None;
+        *s = None;
+    }
+
+    return Res::ok(None, None);
 }
 
 struct SshSession {
@@ -821,6 +890,10 @@ fn main() {
         fatal!("{}", e);
     }
 
+    if let Err(e) = model::init() {
+        fatal!("{}", e);
+    }
+
     let ssh_client = SshSession {
         client_id: Mutex::new(None),
         session: Mutex::new(None),
@@ -831,12 +904,12 @@ fn main() {
     .mount("/public", StaticFiles::from("./templates/static"))
     .mount("/", routes![
          check_online, login, do_login,
-         get_task, set_status, operate, tasks, cancel_task, set_task, 
+         get_task, set_status, set_info, get_info, operate, tasks, cancel_task, set_task, 
          statistics, get_statistics, index, delete_client, edit_client, add_client, 
          get_memory_chart,
          get_cpu_chart,
          get_byte_chart,
-         connect_ssh_client,run_ssh_command,
+         connect_ssh_client,run_ssh_command,clear_ssh_client,
          client_applys,pass_apply,reject_apply,
          get_setting, save_setting,
          get_pihole_statistics,
