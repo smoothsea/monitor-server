@@ -1324,32 +1324,27 @@
                 // terminal
                 connectTerminal: function (id, address) {
                     let _this = this;
-                    if (this.teriminalId != id) {
-                        axios.post("/connect_ssh_client", "client_id=" + id)
-                        .then(function (ret) {
-                            if (ret) {
-                                ret = ret.data;
-                                if (ret.ok) {
-                                    _this.activeIndex = 5;
-                                    _this.teriminalId = id;
-                                    _this.terminal_content = address + " connect ok\r\n";
-                                    _this.terminal_command_enable = true;
-                                    _this.terminal_command = "";
-                                    setTimeout(function () {
-                                        document.getElementById("shell-cmd").focus();
-                                      });
-                                } else {
-                                    _this.$message({
-                                        type: 'error',
-                                        message: ret.message
-                                    })
-                                }
+                    axios.post("/connect_ssh_client", "client_id=" + id)
+                    .then(function (ret) {
+                        if (ret) {
+                            ret = ret.data;
+                            if (ret.ok) {
+                                _this.activeIndex = 5;
+                                _this.teriminalId = id;
+                                _this.terminal_content = address + " connect ok\r\n";
+                                _this.terminal_command_enable = true;
+                                _this.terminal_command = "";
+                                setTimeout(function () {
+                                    document.getElementById("shell-cmd").focus();
+                                  });
+                            } else {
+                                _this.$message({
+                                    type: 'error',
+                                    message: ret.message
+                                })
                             }
-                        })
-                    } else {
-                      _this.activeIndex = 5;
-                      document.getElementById("shell-cmd").focus();
-                    }
+                        }
+                    })
                 },
                 runTerminalCommand: function (command) {
                     var _this = this;
@@ -1378,7 +1373,6 @@
                     })
                 },
                 initShell: function () {
-                    axios.post("/clear_ssh_client", "client_id=" + Number(this.teriminalId));
                     this.teriminalId = 0;
                     this.terminal_content = "<span style='color:red'>Please connect to the server first</span>";
                 },

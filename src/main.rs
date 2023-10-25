@@ -1,4 +1,5 @@
-#![feature(proc_macro_hygiene, decl_macro)]
+#![feature(proc_macro_hygiene, decl_macro, mutex_unpoison)]
+
 #[macro_use] extern crate rocket;
 
 mod db;
@@ -8,7 +9,8 @@ mod model;
 use db::Db;
 use ssh2::Session; 
 use chrono::Duration;
-use std::sync::Mutex;
+use std::time::Duration as StdDuration;
+use std::{sync::{Mutex, Arc, PoisonError}, thread};
 use rusqlite::NO_PARAMS;
 use std::net::TcpStream;
 use rocket::http::Status;
@@ -677,6 +679,13 @@ fn connect_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, sessio
         },
     }
 
+    if session.client_id.is_poisoned() || session.session.is_poisoned() {
+        session.client_id.clear_poison();
+        session.session.clear_poison();
+        *(session.client_id.lock().unwrap()) = None;
+        *(session.session.lock().unwrap()) = None;
+    }
+
     let mut s = session.session.lock().unwrap();
     let mut client_id = session.client_id.lock().unwrap(); 
     let mut is_init = false;
@@ -720,6 +729,13 @@ struct SshCommandParams {
 #[post("/run_ssh_command", data="<params>")]
 fn run_ssh_command(_admin: Admin, params:Form<SshCommandParams>, session: State<SshSession>) -> Json<Res::<Vec<String>>>
 {
+    if session.client_id.is_poisoned() || session.session.is_poisoned() {
+        session.client_id.clear_poison();
+        session.session.clear_poison();
+        *(session.client_id.lock().unwrap()) = None;
+        *(session.session.lock().unwrap()) = None;
+    }
+
     let client_id = session.client_id.lock().unwrap(); 
     let s = session.session.lock().unwrap();
     if let Some(id) = *client_id {
@@ -746,19 +762,6 @@ fn run_ssh_command(_admin: Admin, params:Form<SshCommandParams>, session: State<
     } else {
         return Res::error(Some("查询错误".to_string()));
     }
-}
-
-#[post("/clear_ssh_client", data="<params>")]
-fn clear_ssh_client(_admin: Admin, params:Form<ConnectSshClientParams>, session: State<SshSession>) -> Json<Res::<Vec<String>>>
-{
-    let mut s = session.session.lock().unwrap();
-    let mut client_id = session.client_id.lock().unwrap(); 
-    if (*client_id).unwrap_or_default() == params.client_id {
-        *client_id = None;
-        *s = None;
-    }
-
-    return Res::ok(None, None);
 }
 
 struct SshSession {
@@ -909,7 +912,7 @@ fn main() {
          get_memory_chart,
          get_cpu_chart,
          get_byte_chart,
-         connect_ssh_client,run_ssh_command,clear_ssh_client,
+         connect_ssh_client,run_ssh_command,
          client_applys,pass_apply,reject_apply,
          get_setting, save_setting,
          get_pihole_statistics,
