@@ -813,5 +813,23 @@ pub fn get_disks(client_id: u32) -> Result<Vec<DiskRow>, Box<dyn Error>>
 
 pub fn init() -> Result<(), Box<dyn Error>>
 {
+    let db = Db::get_db()?;
+    let mut client_ids:Vec<u32> = vec![];
+    match db.conn.prepare("select id from client where ssh_enable=1") {
+        Ok(mut smtm) => {
+            if let Ok(mut ret) = smtm.query(NO_PARAMS) {
+                while let Some(row) = ret.next().unwrap() {
+                   client_ids.push(row.get(0)?);
+                }
+            }
+        },
+        Err(_e) => {
+            Err("查询错误")?;
+        }
+    }
+    for client_id in client_ids {
+       let _ = set_task(client_id, "close_ssh".to_string()); 
+       let _ = set_task(client_id, "open_ssh".to_string()); 
+    }
     Ok(()) 
 }
