@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use rocket_contrib::json::Json;
 use serde::Serialize;
 use rand::Rng;
@@ -30,11 +32,13 @@ impl <T:Serialize>Res<T> {
 }
 
 // Cleans statistics data randomly
-pub fn clean_data() {
+pub fn clean_data(locker:& Mutex<bool>) {
     let mut rng = rand::thread_rng();
-    let rand = rng.gen_range(0..100);
+    let rand = rng.gen_range(0..1000);
 
     if rand < 2 {
-        if let Err(_) = clean(7){};
+        if let Ok(_) = locker.try_lock() {
+            if let Err(_) = clean(7){};
+        }
     }
 }

@@ -4,7 +4,7 @@ template_dir = "templates/"
 [development]
 address = "0.0.0.0"
 port = 8000
-workers = 1
+workers = 4
 keep_alive = 5
 log = "normal"
 limits = { forms = 32768 }
@@ -12,7 +12,7 @@ limits = { forms = 32768 }
 [staging]
 address = "0.0.0.0"
 port = 8000
-workers = 1
+workers = 4
 keep_alive = 5
 log = "normal"
 limits = { forms = 32768 }
@@ -20,7 +20,7 @@ limits = { forms = 32768 }
 [production]
 address = "0.0.0.0"
 port = 8000
-workers = 1 
+workers = 4 
 keep_alive = 5
 log = "critical"
 limits = { forms = 32768 }

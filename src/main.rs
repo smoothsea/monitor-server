@@ -9,8 +9,7 @@ mod model;
 use db::Db;
 use ssh2::Session; 
 use chrono::Duration;
-use std::time::Duration as StdDuration;
-use std::{sync::{Mutex, Arc, PoisonError}, thread};
+use std::sync::Mutex;
 use rusqlite::NO_PARAMS;
 use std::net::TcpStream;
 use rocket::http::Status;
@@ -35,6 +34,11 @@ macro_rules! fatal {
     };
 }
 
+#[derive(Debug)]
+struct Locker {
+    clean: Mutex<bool>,
+}
+
 // Client auth
 #[derive(Debug)]
 struct Client(u32);
@@ -50,6 +54,9 @@ impl <'a, 'r> FromRequest<'a, 'r> for Client {
     type Error = ClientError;
 
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+        let locker = request.guard::<State<Locker>>().unwrap();
+        clean_data(&locker.clean);   // clean data
+
         let remote_ip = request.real_ip().unwrap_or(request.client_ip().unwrap()).to_string();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let machine_id = request.headers().get_one("authorization").unwrap_or("");
@@ -97,8 +104,6 @@ impl <'a, 'r> FromRequest<'a, 'r> for Admin {
     type Error = AdminError;
 
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
-        clean_data();   // clean data
-
         if let Some(id) = request.cookies().get_private("user_id") {
             if let Ok(d) = id.value().parse::<i32>() {
                 return Outcome::Success(Admin(d));
@@ -902,6 +907,10 @@ fn main() {
         session: Mutex::new(None),
     };
 
+    let locker = Locker {
+        clean: Mutex::new(false),
+    };
+
     rocket::ignite()
     .register(catchers![forbidden])
     .mount("/public", StaticFiles::from("./templates/static"))
@@ -921,5 +930,6 @@ fn main() {
      ])
     .attach(Template::fairing())
     .manage(ssh_client)
+    .manage(locker)
     .launch();
 }

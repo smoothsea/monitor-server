@@ -818,7 +818,6 @@
                 edit: function () {
                     var _this = this;
                     this.edit_form.client_id = this.edit_form.id;
-
                     axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_enable", "ssh_username", "ssh_password", "remark"]))
                         .then(function (ret) {
                             if (ret) {
@@ -1652,12 +1651,13 @@
                     var isLimitField = fields.length > 0 ? true : false;
                     var t = [];
                     for (var i in o) {
+                        var value = encodeURIComponent(o[i]);
                         if (isLimitField) {
                             if (fields.indexOf(i) >= 0) {
-                                t.push(i + "=" + o[i]);
+                                t.push(i + "=" + value);
                             }
                         } else {
-                            t.push(i + "=" + o[i]);
+                            t.push(i + "=" + value);
                         }
                     }
                     return t.join("&");
