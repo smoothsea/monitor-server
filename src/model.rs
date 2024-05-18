@@ -392,9 +392,9 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                         ssh_username: row.get(18)?,
                         ssh_password: row.get(19)?,
                         cpu_temp: row.get(20)?,
-                        disk_avail: row.get(21)?,
-                        disk_total: row.get(22)?,
-                        remark: row.get(23)?,
+                        disk_avail: row.get(21).unwrap_or(None),
+                        disk_total: row.get(22).unwrap_or(None),
+                        remark: row.get(23).unwrap_or(None),
                         ssh_enable: row.get(24)?,
                     };
                     data.push(item);
