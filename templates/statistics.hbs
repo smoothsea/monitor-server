@@ -230,7 +230,7 @@
                 </template>
                 
                 <template v-if="pihole_status">
-                <el-row :gutter="20">
+                <el-row :gutter="20" v-if="pihole_data.statistics">
                   <el-col :span="6">
                     <el-card class="box-card pi-hole-card" shadow="hover" style="background-color:#67C23A">
                       <p>总请求 ({[ pihole_data.statistics.unique_clients ]} 客户)</p>

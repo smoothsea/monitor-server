@@ -681,7 +681,7 @@ pub struct PiholeData {
 pub fn get_pihole_statistics() -> Result<PiholeData, Box<dyn Error>> {
     let setting = get_setting()?;
     if &setting.pihole_server != "" {
-        let statistics:Option<PiholeSummaryRet> = reqwest::blocking::get(format!("{}/admin/api.php", setting.pihole_server))?.json().ok();
+        let statistics:Option<PiholeSummaryRet> = reqwest::blocking::get(format!("{}/admin/api.php?summaryRaw", setting.pihole_server))?.json().ok();
         let domain_list:Option<PiholeTopListRet> = reqwest::blocking::get(format!("{}/admin/api.php?topItems=10&auth={}", setting.pihole_server, setting.pihole_web_password))?.json().ok();
         return Ok(PiholeData {
             statistics,
