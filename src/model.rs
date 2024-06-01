@@ -665,6 +665,9 @@ struct PiholeSummaryRet {
     dns_queries_today: u32,
     ads_blocked_today: u32,
     unique_clients: u32,
+
+    #[serde(flatten)]
+    other: serde_json::Value,
 }
 
 #[derive(Serialize,Deserialize,Debug)]
