@@ -9,7 +9,7 @@ mod model;
 use db::Db;
 use ssh2::Session; 
 use chrono::Duration;
-use std::sync::Mutex;
+use std::{sync::Mutex, thread};
 use rusqlite::NO_PARAMS;
 use std::net::TcpStream;
 use rocket::http::Status;
@@ -910,6 +910,14 @@ fn main() {
     let locker = Locker {
         clean: Mutex::new(false),
     };
+
+    thread::spawn(|| {
+        loop {
+            check_online();
+
+            thread::sleep(std::time::Duration::from_secs(10));
+        }
+    });
 
     rocket::ignite()
     .register(catchers![forbidden])
