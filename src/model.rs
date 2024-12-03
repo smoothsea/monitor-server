@@ -672,7 +672,7 @@ struct PiholeSummaryRet {
 
 #[derive(Serialize,Deserialize,Debug)]
 struct PiholeTopListRet {
-    top_queries: HashMap<String, u32>,
+    top_queries: serde_json::Value,
 }
 
 #[derive(Serialize,Debug)]
