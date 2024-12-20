@@ -367,6 +367,20 @@
                     <el-table-column prop="client_ip" header-align="left" fixed label="客户端ip" width="120px">
                     </el-table-column>
                     <el-table-column prop="name" header-align="left" fixed label="名称" width="200px">
+                        <template slot-scope="scope">
+                          <template v-if="isEditingName(scope.row.id)">
+                            <el-input
+                              v-model="scope.row.name"
+                              size="small"
+                              @blur="stopEditingName"
+                              @keyup.enter="stopEditingName"
+                            />
+                          </template>
+                          <template v-else>
+                            <span @dblclick="startEditingName(scope.row.id, scope.row.name)" v-html="scope.row.name" style="cursor:point;display:inline-block;width:180px;min-height:20px" >
+                            </span>
+                          </template>
+                        </template>
                     </el-table-column>
                     <el-table-column prop="cpu" header-align="left" label="cpu" width="100px" sortable>
                         <template slot-scope="scope">
@@ -744,6 +758,10 @@
                 disk_list_loading: true,
                 diskList: [
                 ],
+                editingCell: {
+                  id: null,
+                  oldValue: null,
+                },
             },
             methods: {
                 // client
@@ -755,6 +773,10 @@
                     }
                 },
                 getData: function () {
+                    if (this.isEditingName()) {
+                        return;
+                    }
+
                     var _this = this;
                     axios.post("/get_statistics", {}).then(function (ret) {
                         if (ret.status) {
@@ -834,6 +856,26 @@
                                 }
                             }
                         })
+                },
+                startEditingName: function (id, oldValue) {
+                  this.editingCell = { id: id, oldValue: oldValue };
+                },
+                stopEditingName: function () {
+                  for (let i = 0, len = this.list.length; i < len; i++) {
+                      if (this.list[i]["id"] == this.editingCell.id) {
+                          this.edit_form = this.list[i];
+                      }
+                  }
+                  if (this.edit_form.name != this.editingCell.oldValue) {
+                      this.edit();
+                  }
+                  this.editingCell = { id: null, oldValue: null };
+                },
+                isEditingName: function (id) {
+                  if (id === undefined) {
+                      return this.editingCell.id !== null;    
+                  }
+                  return this.editingCell.id === id;
                 },
                 saveSetting: function () {
                     var _this = this;
