@@ -308,6 +308,8 @@ fn set_status(client:Client, status:Json<StatusParams>) -> Json<Res::<Vec<String
 #[derive(Deserialize, Serialize, Debug)]
 struct ClientInfo {
     ssh_enable: Option<u8>,
+    haos_enable: Option<u8>,
+    config: Option<model::SettingRow>
 }
 
 #[post("/get_info")]
@@ -320,11 +322,18 @@ fn get_info(client:Client) -> Json<Res::<ClientInfo>>{
         return Res::error(Some("数据库连接错误".to_string()));
     }
 
-    let sql = format!("select ssh_enable from client where id={}", client_id);
+    let sql = format!("select ssh_enable,haos_enable from client where id={}", client_id);
     match db.conn.query_row(&sql, NO_PARAMS, |row| Ok(ClientInfo{
         ssh_enable: row.get(0)?,
+        haos_enable: row.get(1)?,
+        config: None,
     })) {
-        Ok(data) => {
+        Ok(mut data) => {
+            if let Some(enable) = data.haos_enable {
+                if enable == 1 {
+                    data.config = Some(model::get_setting().unwrap_or(model::SettingRow::default())); 
+                }
+            }
             return Res::ok(None, Some(data));
         },
         Err(_e) => {
@@ -459,14 +468,15 @@ struct EditClientParams {
     ssh_username: Option<String>,
     ssh_password: Option<String>,
     remark: Option<String>,
+    haos_enable: u8,  
 }
 
 #[post("/edit_client", data="<params>")]
 fn edit_client(_admin: Admin, params:Form<EditClientParams>) -> Json<Res::<Vec<String>>> 
 {
-    match model::edit_client(params.client_id, &params.name, &params.client_ip, params.is_enable as u32,params.ssh_enable, 
-        &params.ssh_username.clone().unwrap_or("".to_string()),
-        &params.ssh_password.clone().unwrap_or("".to_string()), &params.remark.clone().unwrap_or("".to_string())) {
+    match model::edit_client(params.client_id, &params.name, &params.client_ip, params.is_enable as u32,params.ssh_enable,params.haos_enable,
+        &params.ssh_username.clone().unwrap_or("".to_string()), &params.ssh_password.clone().unwrap_or("".to_string()),
+        &params.remark.clone().unwrap_or("".to_string())) {
         Ok(_d) => {
             return Res::ok(None, None);
         },
@@ -778,38 +788,13 @@ struct SshSession {
 #[post("/get_setting")]
 fn get_setting(_admin: Admin) -> Json<model::SettingRow>
 {
-    if let Ok(ret) = model::get_setting() {
-        Json(ret)     
-    } else {
-        Json(model::SettingRow {
-            pihole_server: "".to_string(),
-            pihole_web_password: "".to_string(),
-            es_server: "".to_string(),
-            k8s_server: "".to_string(),
-            k8s_auth_token: "".to_string(),
-        })
-    }
-}
-
-#[derive(FromForm, Debug)]
-struct SaveSettingParam {
-    pihole_server: String,
-    pihole_web_password: String,
-    es_server: String,
-    k8s_server: String,
-    k8s_auth_token: String,
+    Json(model::get_setting().unwrap_or(model::SettingRow::default()))
 }
 
 #[post("/save_setting", data="<params>")]
-fn save_setting(_admin: Admin, params:Form<SaveSettingParam>) -> Json<Res::<Vec<String>>> 
+fn save_setting(_admin: Admin, params:Form<model::SettingRow>) -> Json<Res::<Vec<String>>> 
 {
-    match model::save_setting(
-        &params.pihole_server, 
-        &params.pihole_web_password, 
-        &params.es_server, 
-        &params.k8s_server, 
-        &params.k8s_auth_token
-        ){
+    match model::save_setting(&params){
         Ok(_d) => {
             return Res::ok(None, None);
         },

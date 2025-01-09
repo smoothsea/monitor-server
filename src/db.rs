@@ -7,7 +7,7 @@ pub struct Db {
 }
 
 impl Db {
-    const CURRENT_VESION:i64 = 12;
+    const CURRENT_VESION:i64 = 13;
     const DEFAULT_ADMIN_USERNAME:&'static str = "admin";
     const DEFAULT_ADMIN_PASSWORD:&'static str = "21232f297a57a5a743894a0e4a801fc3";
 
@@ -114,6 +114,14 @@ impl Db {
 
         sqls.insert(12, vec![
             "alter table client add ssh_enable tinyint default 0",
+        ]);
+
+        sqls.insert(13, vec![
+            "alter table config add haos_mqtt_host varchar(255)",
+            "alter table config add haos_mqtt_port integer",
+            "alter table config add haos_mqtt_username varchar(255)",
+            "alter table config add haos_mqtt_password varchar(255)",
+            "alter table client add haos_enable tinyint default 0",
         ]);
 
         for key in 1..=sqls.len() {

@@ -468,6 +468,9 @@
                 <el-form-item label="SSH映射">
                     <el-switch v-model="edit_form.ssh_enable" :active-value="1" :inactive-value="0"></el-switch>
                 </el-form-item>
+                <el-form-item label="Haos同步">
+                    <el-switch v-model="edit_form.haos_enable" :active-value="1" :inactive-value="0"></el-switch>
+                </el-form-item>
             </el-form>
             <span slot="footer" class="dialog-footer">
                 <el-button @click="edit_pop = false">取 消</el-button>
@@ -614,21 +617,38 @@
                 <div class="grid-content bg-purple-dark">
                   <el-form ref="setting_form" :model="setting_form" label-width="200px"
                   label-position="left" size="small">
+                      <el-divider content-position="left">Pihole</el-divider>
                       <el-form-item label="Pilehole服务器地址">
                         <el-input v-model="setting_form.pihole_server" style="width:30%"></el-input>
                       </el-form-item>
                       <el-form-item label="Pilehole webpassword">
-                        <el-input v-model="setting_form.pihole_web_password" style="width:30%"></el-input>
+                        <el-input v-model="setting_form.pihole_web_password" type="password" style="width:30%"></el-input>
                       </el-form-item>
+                      <el-divider content-position="left">Elastic</el-divider>
                       <el-form-item label="Elastic服务器地址">
                         <el-input v-model="setting_form.es_server" style="width:30%"></el-input>
                       </el-form-item>
+                      <el-divider content-position="left">K8s</el-divider>
                       <el-form-item label="K8s服务器地址">
                         <el-input v-model="setting_form.k8s_server" style="width:30%"></el-input>
                       </el-form-item>
                       <el-form-item label="K8s auth token">
                         <el-input v-model="setting_form.k8s_auth_token" style="width:50%" type="textarea"></el-input>
                       </el-form-item>
+                      <el-divider content-position="left">Haos</el-divider>
+                      <el-form-item label="Haos MQTT服务器地址">
+                        <el-input v-model="setting_form.haos_mqtt_host" style="width:30%"></el-input>
+                      </el-form-item>
+                      <el-form-item label="Haos MQTT服务器端口">
+                        <el-input-number v-model="setting_form.haos_mqtt_port" ></el-input-number>
+                      </el-form-item>
+                      <el-form-item label="Haos MQTT账号">
+                        <el-input v-model="setting_form.haos_mqtt_username" style="width:30%"></el-input>
+                      </el-form-item>
+                      <el-form-item label="Haos MQTT密码">
+                        <el-input v-model="setting_form.haos_mqtt_password" type="password" style="width:30%"></el-input>
+                      </el-form-item>
+                      <el-divider></el-divider>
                       <el-form-item>
                         <el-button type="primary" @click="saveSetting">保存</el-button>
                         <el-button>取消</el-button>
@@ -677,6 +697,7 @@
                     ssh_address: "",
                     ssh_username: "",
                     ssh_password: "",
+                    haos_enable: "",
                     remark: "",
                 },
                 add_client_form: {
@@ -692,6 +713,10 @@
                     es_server: "",
                     k8s_server: "",
                     k8s_auth_token: "",
+                    haos_mqtt_host: "",
+                    haos_mqtt_port: "",
+                    haos_mqtt_username: "",
+                    haos_mqtt_password: "",
                 },
                 // memory
                 memory_chart: {},
@@ -840,7 +865,7 @@
                 edit: function () {
                     var _this = this;
                     this.edit_form.client_id = this.edit_form.id;
-                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_enable", "ssh_username", "ssh_password", "remark"]))
+                    axios.post("/edit_client", this.toFormData(this.edit_form, ["client_id", "name", "client_ip", "is_enable", "ssh_enable", "ssh_username", "ssh_password", "remark", "haos_enable"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;
@@ -879,7 +904,7 @@
                 },
                 saveSetting: function () {
                     var _this = this;
-                    axios.post("/save_setting", this.toFormData(this.setting_form, ["pihole_server", "pihole_web_password", "es_server", "k8s_server", "k8s_auth_token"]))
+                    axios.post("/save_setting", this.toFormData(this.setting_form, ["pihole_server", "pihole_web_password", "es_server", "k8s_server", "k8s_auth_token", "haos_mqtt_host", "haos_mqtt_port", "haos_mqtt_username", "haos_mqtt_password"]))
                         .then(function (ret) {
                             if (ret) {
                                 ret = ret.data;

@@ -287,7 +287,7 @@ pub fn get_client(client_id: u32) -> Result<Client, Box<dyn Error>>
     }
 }
 
-pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, ssh_enable: u8, ssh_username: &str, ssh_password: &str, remark: &str) -> Result<(), Box<dyn Error>>
+pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, ssh_enable: u8, haos_enable: u8, ssh_username: &str, ssh_password: &str, remark: &str) -> Result<(), Box<dyn Error>>
 {
     let db = Db::get_db()?;
     if let Ok(_d) = db.conn.query_row::<(), _, _>(&format!("select id from client where id!={} and client_ip=?1", client_id), &[&client_ip], |_row| {
@@ -295,8 +295,8 @@ pub fn edit_client(client_id: u32, name: &str, client_ip: &str, is_enable: u32, 
     }) {
         Err("该用户ip已使用")?;
     }
-    let mut sql = format!("update client set name=?1,client_ip=?2,ssh_username=?3,ssh_password=?4,remark=?5,is_enable={},ssh_enable={}",
-         is_enable, ssh_enable);
+    let mut sql = format!("update client set name=?1,client_ip=?2,ssh_username=?3,ssh_password=?4,remark=?5,is_enable={},ssh_enable={},haos_enable={}",
+         is_enable, ssh_enable, haos_enable);
     sql = format!("{} where id={}", sql, client_id);
 
     if let Err(_e) = db.conn.execute(&sql, &[&name, &client_ip, &ssh_username, &ssh_password, &remark]) {
@@ -332,6 +332,7 @@ pub struct StatisticsRow
     last_online_time: Option<String>,
     is_enable: u8,
     ssh_enable: u8,
+    haos_enable: u8,
     created_at: Option<String>,
     uptime: Option<f64>,
     boot_time: Option<String>,
@@ -361,7 +362,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
         cpu.cpu_user,cpu.cpu_system,cpu.cpu_nice,cpu.cpu_idle,memory.memory_free,memory.memory_total,
         client.system_version,client.package_manager_update_count,
         ssh_address,ssh_username,ssh_password,cpu_temp,
-        disk_avail,disk_total,remark,client.ssh_enable
+        disk_avail,disk_total,remark,client.ssh_enable,client.haos_enable
         from client
         left join (select * from cpu_info as info inner join (select max(id) as mid from cpu_info group by client_id) as least_info on info.id=least_info.mid) as cpu on cpu.client_id=client.id
         left join (select * from memory_info as info inner join (select max(id) as mid from memory_info group by client_id) as least_info on info.id=least_info.mid) as memory on memory.client_id=client.id
@@ -396,6 +397,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                         disk_total: row.get(22).unwrap_or(None),
                         remark: row.get(23).unwrap_or(None),
                         ssh_enable: row.get(24)?,
+                        haos_enable: row.get(25)?,
                     };
                     data.push(item);
                 }
@@ -599,7 +601,7 @@ pub fn reject_apply(id: u32) -> Result<(), Box<dyn Error>>
 }
 
 //  Setting
-#[derive(Serialize,Debug)]
+#[derive(Serialize,Deserialize,Debug,Default,FromForm)]
 pub struct SettingRow
 {
     pub pihole_server: String,
@@ -607,23 +609,35 @@ pub struct SettingRow
     pub es_server: String,
     pub k8s_server: String,
     pub k8s_auth_token: String,
+    pub haos_mqtt_host: String,
+    pub haos_mqtt_port: String,
+    pub haos_mqtt_username: String,
+    pub haos_mqtt_password: String,
 }
 
 pub fn get_setting() -> Result<SettingRow, Box<dyn Error>>
 {
     let db = Db::get_db()?;
-    let sql = format!("select pihole_server,pihole_web_password,es_server,k8s_server,k8s_auth_token from config limit 1");
+    let sql = format!("select pihole_server,pihole_web_password,es_server,k8s_server,k8s_auth_token,haos_mqtt_host,haos_mqtt_port,haos_mqtt_username,haos_mqtt_password from config limit 1");
     match db.conn.query_row(&sql, NO_PARAMS, |row| Ok(SettingRow{
         pihole_server: row.get(0)?,
         pihole_web_password: row.get(1)?,
         es_server: row.get(2)?,
         k8s_server: row.get(3)?,
         k8s_auth_token: row.get(4)?,
+        haos_mqtt_host: row.get(5)?,
+        haos_mqtt_port: row.get::<_, u32>(6)?.to_string(),
+        haos_mqtt_username: row.get(7)?,
+        haos_mqtt_password: row.get(8)?,
     })) {
         Ok(data) => {
             return Ok(data);
         },
-        Err(_e) => {
+        Err(e) => {
+            println!("{:?}", e);
+            if e == rusqlite::Error::QueryReturnedNoRows {
+                Err("未配置")?;
+            }
             Err("查询错误")?;
         }
     }
@@ -631,19 +645,19 @@ pub fn get_setting() -> Result<SettingRow, Box<dyn Error>>
     return Err("")?;
 }
 
-pub fn save_setting(pihole_server: &str, pihole_web_password: &str, es_server: &str, k8s_server: &str, k8s_auth_token: &str) -> Result<(), Box<dyn Error>>
+pub fn save_setting(data: &SettingRow) -> Result<(), Box<dyn Error>>
 {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let db = Db::get_db()?;
     let sql = format!("select id from config limit 1");
     match db.conn.query_row::<i64, _, _>(&sql, NO_PARAMS, |row| row.get(0)) {
         Ok(id) => {
-            if let Err(_e) = db.conn.execute(&format!("update config set pihole_server=?1,es_server=?2,k8s_server=?3,updated_at=?4,pihole_web_password=?5,k8s_auth_token=?6 where id={}", id), &[pihole_server, es_server, k8s_server, &now, pihole_web_password, k8s_auth_token]) {
+            if let Err(_e) = db.conn.execute(&format!("update config set pihole_server=?1,es_server=?2,k8s_server=?3,updated_at=?4,pihole_web_password=?5,k8s_auth_token=?6,haos_mqtt_host=?7,haos_mqtt_port=?8,haos_mqtt_username=?9,haos_mqtt_password=?10 where id={}", id), &[&data.pihole_server, &data.es_server, &data.k8s_server, &now, &data.pihole_web_password, &data.k8s_auth_token, &data.haos_mqtt_host, &data.haos_mqtt_port, &data.haos_mqtt_username, &data.haos_mqtt_password]) {
                 Err("保存失败")?;
             }
         },
         Err(_e) => {
-            if let Err(_e) = db.conn.execute(&format!("insert into config (pihole_server, es_server, k8s_server, created_at, updated_at, pihole_web_password, k8s_auth_token) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)"), &[pihole_server, es_server, k8s_server, &now, &now, pihole_web_password, k8s_auth_token]) {
+            if let Err(_e) = db.conn.execute(&format!("insert into config (pihole_server, es_server, k8s_server, created_at, updated_at, pihole_web_password, k8s_auth_token, haos_mqtt_host, haos_mqtt_port, haos_mqtt_username, haos_mqtt_password) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"), &[&data.pihole_server, &data.es_server, &data.k8s_server, &now, &now, &data.pihole_web_password, &data.k8s_auth_token, &data.haos_mqtt_host, &data.haos_mqtt_port, &data.haos_mqtt_username, &data.haos_mqtt_password]) {
                 Err("保存失败")?;
             }
         }
