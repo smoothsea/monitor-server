@@ -3,6 +3,9 @@ FROM rust:1.48.0 as build
 RUN mkdir /app && cd /app
 ADD ./ /app/monitor-server
 WORKDIR /app/monitor-server
+RUN apt-get update && apt-get install -y \
+            --no-install-recommends \
+            cmake
 RUN rustup default nightly-2023-06-15
 RUN cargo build --release -p proxy -p monitor_server
 
