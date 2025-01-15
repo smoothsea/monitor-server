@@ -827,9 +827,9 @@
                                 ret[i]["uptime"] = is_online ? _this.formatSeconds(ret[i]["uptime"]) : "";
                                 ret[i]["cpu_temp"] = is_online ? ret[i]["cpu_temp"] + "℃" : "";
                                 ret[i]["is_enable_text"] = ret[i]["is_enable"] ? "是" : "否";
-                                ret[i]["cpu"] = is_online ? _this.accMul(_this.tofixed(ret[i]["cpu_user"] + ret[i]["cpu_system"], 4), 100) + "%" : "";
+                                ret[i]["cpu"] = is_online ? ret[i]["cpu_usage"] + "%" : "";
                                 ret[i]["disk"] = is_online && ret[i]["disk_total"] ? _this.getfilesize(ret[i]["disk_total"] - ret[i]["disk_avail"]) + "/" + _this.getfilesize(ret[i]["disk_total"]) + " ( " + _this.tofixed((((ret[i]["disk_total"] - ret[i]["disk_avail"]) / ret[i]["disk_total"]) * 100), 2) + "% )" : "";
-                                ret[i]["memory"] = is_online && ret[i]["memory_total"] ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + _this.tofixed((((ret[i]["memory_total"] - ret[i]["memory_free"]) / ret[i]["memory_total"]) * 100), 2) + "% )" : "";
+                                ret[i]["memory"] = is_online && ret[i]["memory_total"] ? _this.getfilesize(ret[i]["memory_total"] - ret[i]["memory_free"]) + "/" + _this.getfilesize(ret[i]["memory_total"]) + " ( " + ret[i]["memory_usage"] + "% )" : "";
                                 ret[i]["package_manager"] = is_online && ret[i]["package_manager_update_count"] ? ret[i]["package_manager_update_count"] + " updates avaliable" : "";
                             }
                             _this.list = ret;

@@ -1,6 +1,6 @@
 use md5;
 use regex::Regex;
-use crate::db::Db;
+use crate::{db::Db, get_statistics};
 use reqwest::header;
 use serde::{Serialize, Deserialize};
 use k8s_openapi::http;
@@ -11,6 +11,7 @@ use chrono::{Local, Duration};
 use std::collections::HashMap;
 use chrono::naive::NaiveDateTime;
 use k8s_openapi::api::core::v1 as api;
+use paho_mqtt as mqtt;
 
 const SSH_ENABLE:u8 = 1;
 const SSH_DISABLE:u8 = 0;
@@ -351,6 +352,8 @@ pub struct StatisticsRow
     disk_avail: Option<i64>,
     disk_total: Option<i64>,
     remark: Option<String>,
+    cpu_usage: Option<f64>,
+    memory_usage: Option<f64>,
 }
 
 pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
@@ -371,7 +374,7 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
         Ok(mut smtm) => {
             if let Ok(mut ret) = smtm.query(NO_PARAMS) {
                 while let Some(row) = ret.next().unwrap() {
-                    let item = StatisticsRow {
+                    let mut item = StatisticsRow {
                         id: row.get(0)?,
                         client_ip: row.get(1)?,
                         name: row.get(2)?,
@@ -398,7 +401,20 @@ pub fn get_client_statistics() -> Result<Vec<StatisticsRow>, Box<dyn Error>>
                         remark: row.get(23).unwrap_or(None),
                         ssh_enable: row.get(24)?,
                         haos_enable: row.get(25)?,
+                        cpu_usage: None,
+                        memory_usage: None,
                     };
+
+                    if item.is_online == 1 {
+                        if !item.cpu_user.is_none() && !item.cpu_system.is_none() {
+                            item.cpu_usage = Some(format!("{:.2}", (item.cpu_user.unwrap() + item.cpu_system.unwrap()) * 100.0).parse().unwrap()); 
+                        }
+
+                        if !item.memory_free.is_none() && !item.memory_total.is_none() {
+                            item.memory_usage = Some(format!("{:.2}", (item.memory_total.unwrap()
+                                                         - item.memory_free.unwrap())/item.memory_total.unwrap() * 100.0).parse().unwrap()); 
+                        }
+                    }
                     data.push(item);
                 }
             }
@@ -741,6 +757,53 @@ fn request_k8s(req: http::Request<Vec<u8>>) -> Result<reqwest::blocking::Respons
     }
 
     Err("未配置K8s相关信息")?
+}
+
+pub fn sync_haos() -> Result<(), Box<dyn Error>> {
+    let setting = get_setting()?;
+    let clients = get_client_statistics()?;
+
+    if setting.haos_mqtt_host.len() == 0 || setting.haos_mqtt_port.len() == 0 {
+        return Ok(());
+    }
+    
+    if clients.len() == 0 {
+        return Ok(());
+    }
+
+    let cli = mqtt::Client::new(format!("mqtt://{}:{}", setting.haos_mqtt_host, setting.haos_mqtt_port))?;
+    let mut connection_options_builder = mqtt::connect_options::ConnectOptionsBuilder::default();
+    if setting.haos_mqtt_username.len() > 0 && setting.haos_mqtt_password.len() > 0 {
+        connection_options_builder.user_name(setting.haos_mqtt_username);
+        connection_options_builder.password(setting.haos_mqtt_password);
+    }
+    let connection_options = connection_options_builder.finalize();
+    cli.connect(connection_options)?;
+
+    for info in clients.iter() {
+        if info.haos_enable == 1 {
+            if info.is_online == 1 { 
+                let cpu_usage_config_content = "{\"name\": \"PCclientid CPU Usage\", \"state_topic\": \"homeassistant/sensor/pcclientid_cpu_usage/state\", \"unit_of_measurement\": \"%\", \"value_template\": \"{{ value }}\", \"device_class\": \"temperature\", \"icon\": \"mdi:cpu-32-bit\", \"uniq_id\": \"pcclientid_cpu_usage\", \"obj_id\": \"pcclientid_cpu_usage\", \"device\": {\"identifiers\": [\"pcclientid\"], \"name\":\"pcclientid_clientname\"}}".replace("clientid", &info.id.to_string()).replace("clientname", &info.name.as_ref().unwrap_or(&"".to_string()));
+                let memory_usage_config_content = "{\"name\": \"PCclientid Memory Usage\", \"state_topic\": \"homeassistant/sensor/pcclientid_memory_usage/state\", \"unit_of_measurement\": \"%\", \"value_template\": \"{{ value }}\", \"device_class\": \"temperature\", \"icon\": \"mdi:cpu-32-bit\", \"uniq_id\": \"pcclientid_memory_usage\", \"obj_id\": \"pcclientid_memory_usage\", \"device\": {\"identifiers\": [\"pcclientid\"], \"name\":\"pcclientid_clientname\"}}".replace("clientid", &info.id.to_string()).replace("clientname", &info.name.as_ref().unwrap_or(&"".to_string()));
+                let cpu_usage_config_msg = mqtt::MessageBuilder::new().topic(format!("homeassistant/sensor/pc{}_cpu_usage/config", info.id)).payload(cpu_usage_config_content).qos(1).finalize();
+                let memory_usage_config_msg = mqtt::MessageBuilder::new().topic(format!("homeassistant/sensor/pc{}_memory_usage/config", info.id)).payload(memory_usage_config_content).qos(1).finalize();
+                let cpu_usage_state_msg = mqtt::MessageBuilder::new().topic(format!("homeassistant/sensor/pc{}_cpu_usage/state", info.id)).payload(info.cpu_usage.unwrap_or(0.0).to_string()).qos(1).finalize();
+                let memory_usage_state_msg = mqtt::MessageBuilder::new().topic(format!("homeassistant/sensor/pc{}_memory_usage/state", info.id)).payload(info.memory_usage.unwrap_or(0.0).to_string()).qos(1).finalize();
+                cli.publish(cpu_usage_config_msg)?;
+                cli.publish(memory_usage_config_msg)?;
+                cli.publish(cpu_usage_state_msg)?;
+                cli.publish(memory_usage_state_msg)?;
+            }
+        } else {
+            let cpu_msg = mqtt::MessageBuilder::new().topic(format!("homeassistant/sensor/pc{}_cpu_usage/config", info.id)).payload("").qos(1).finalize();
+            let memory_msg = mqtt::MessageBuilder::new().topic(format!("homeassistant/sensor/pc{}_memory_usage/config", info.id)).payload("").qos(1).finalize();
+            cli.publish(cpu_msg)?;
+            cli.publish(memory_msg)?;
+        }
+    } 
+
+    cli.disconnect(None)?;
+    Ok(())
 }
 
 // Info

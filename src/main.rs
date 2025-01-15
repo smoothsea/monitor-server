@@ -117,7 +117,6 @@ impl <'a, 'r> FromRequest<'a, 'r> for Admin {
 }
 
 // updates client online status
-#[get("/check_online")]
 fn check_online() {
     let now = Local::now().timestamp();
     let offline_second = 30;
@@ -900,7 +899,9 @@ fn main() {
         loop {
             check_online();
 
-            thread::sleep(std::time::Duration::from_secs(10));
+            model::sync_haos();
+
+            thread::sleep(std::time::Duration::from_secs(30));
         }
     });
 
@@ -908,7 +909,7 @@ fn main() {
     .register(catchers![forbidden])
     .mount("/public", StaticFiles::from("./templates/static"))
     .mount("/", routes![
-         check_online, login, do_login,
+         login, do_login,
          get_task, set_status, set_info, get_info, operate, tasks, cancel_task, set_task, 
          statistics, get_statistics, index, delete_client, edit_client, add_client, 
          get_memory_chart,
